@@ -4,7 +4,7 @@ export interface Panelist {
   description: string; // The short title/job
   shorthandName: string; // Friendly name like "Hank the Disney CEO"
   fullPersonality: string; // Detailed background
-  communicationStyle: string; // e.g. "Blunt and short", "Verbose and academic"
+  communicationStyle: string; // e.g. "Blunt and short (Max 15 words)", "Verbose and academic (3-4 sentences)"
   introMessage: string; // 2-sentence intro
   avatarUrl?: string;
   color?: string; // Tailwind color class like "bg-emerald-50"

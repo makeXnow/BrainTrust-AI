@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 interface Env {
   OPENAI_API_KEY: string;
@@ -16,34 +15,51 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
       }
       
-      const genAI = new GoogleGenerativeAI(context.env.GOOGLE_GENERATIVE_AI_API_KEY);
-      const imagen = genAI.getGenerativeModel({ model: model });
-
-      // Note: As of early 2026, the Gemini SDK handles image generation 
-      // via the generateContent or a dedicated image generation method 
-      // depending on the specific API version.
-      const result = await imagen.generateContent(prompt);
-      const response = await result.response;
+      const apiKey = context.env.GOOGLE_GENERATIVE_AI_API_KEY;
       
-      // Imagen typically returns an image in the candidate parts
-      const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData || p.fileData);
+      // Map friendly model names to actual API model names (from ListModels API)
+      const modelMapping: Record<string, string> = {
+        'imagen-4-standard': 'imagen-4.0-generate-001',
+        'imagen-4-ultra': 'imagen-4.0-ultra-generate-001',
+        'imagen-3-fast': 'imagen-4.0-fast-generate-001',
+      };
       
-      if (imagePart?.inlineData) {
-        const url = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+      const apiModel = modelMapping[model] || 'imagen-4.0-generate-001';
+      
+      // Use direct REST API call to Imagen endpoint
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:predict?key=${apiKey}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instances: [{ prompt: prompt }],
+          parameters: {
+            sampleCount: 1,
+          }
+        }),
+      });
+      
+      const data: any = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || `API error: ${response.status}`);
+      }
+      
+      // Extract base64 image from response
+      const imageData = data.predictions?.[0]?.bytesBase64Encoded;
+      if (imageData) {
+        const url = `data:image/png;base64,${imageData}`;
         return new Response(JSON.stringify({ url }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
       
-      // Fallback for different API response formats
-      const url = (response as any).imageUrl || (response as any).url;
-      if (!url) throw new Error('No image returned from Gemini');
-
-      return new Response(JSON.stringify({ url }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      throw new Error('No image returned from Imagen API');
     } catch (error: any) {
-      return new Response(JSON.stringify({ error: `Gemini Error: ${error.message}` }), {
+      return new Response(JSON.stringify({ error: `Imagen Error: ${error.message}` }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });

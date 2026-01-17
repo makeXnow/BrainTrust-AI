@@ -4,9 +4,14 @@ import { Header } from './components/Header';
 import { ChatInterface } from './components/ChatInterface';
 import { DebugPanel } from './components/DebugPanel';
 import { SettingsPage } from './components/SettingsPage';
+import { ImageTestPage } from './components/ImageTestPage';
 import { clsx } from 'clsx';
 
 function App() {
+  // Simple hash-based routing for test page
+  if (window.location.hash === '#imagetest') {
+    return <ImageTestPage />;
+  }
   const {
     state,
     availableModels,
@@ -53,6 +58,7 @@ function App() {
             topic={state.topic}
             suggestions={suggestions}
             autoResponse={state.autoResponse}
+            userName={state.settings.userName}
             onSendMessage={sendMessage}
             onSelectSuggestion={sendMessage}
             onClearAutoResponse={clearAutoResponse}

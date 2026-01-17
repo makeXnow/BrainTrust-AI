@@ -1,22 +1,150 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Message } from '@/types';
 import { User, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 
+const AutoCroppedImage: React.FC<{ src: string; alt?: string; className?: string; showHoverPreview?: boolean }> = ({ src, alt, className, showHoverPreview = false }) => {
+  const [croppedSrc, setCroppedSrc] = useState<string>(src);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      try {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+        const threshold = 240;
+
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const i = (y * canvas.width + x) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            
+            if (r < threshold || g < threshold || b < threshold) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX > minX && maxY > minY) {
+          const width = maxX - minX;
+          const height = maxY - minY;
+          if (minX > 5 || minY > 5 || (canvas.width - maxX) > 5 || (canvas.height - maxY) > 5) {
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = width;
+            cropCanvas.height = height;
+            const cropCtx = cropCanvas.getContext('2d');
+            if (cropCtx) {
+              cropCtx.drawImage(img, minX, minY, width, height, 0, 0, width, height);
+              try {
+                setCroppedSrc(cropCanvas.toDataURL());
+              } catch (err) {
+                console.warn("Could not export cropped canvas (tainted?):", err);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not autocrop image:", e);
+      }
+    };
+  }, [src]);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (showHoverPreview) {
+      setMousePos({ x: e.clientX, y: e.y });
+    }
+  };
+
+  return (
+    <>
+      <img 
+        src={croppedSrc} 
+        alt={alt} 
+        className={clsx(className, showHoverPreview && "cursor-zoom-in")} 
+        referrerPolicy="no-referrer" 
+        onMouseEnter={() => showHoverPreview && setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        onMouseMove={handleMouseMove}
+      />
+      {showHoverPreview && isHovering && (
+        <div 
+          className="fixed z-[9999] pointer-events-none animate-in fade-in zoom-in-95 duration-200"
+          style={{ 
+            left: mousePos.x - 280, 
+            top: mousePos.y - 280,
+          }}
+        >
+          <div className="w-64 h-64 rounded-2xl overflow-hidden border-4 border-white shadow-2xl bg-white">
+            <img src={croppedSrc} alt={alt} className="w-full h-full object-cover" />
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 interface MessageBubbleProps {
   message: Message;
+  namesToBold?: string[];
   onType?: () => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onType }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBold = [], onType }) => {
   const isUser = message.role === 'user';
   const isModerator = message.role === 'moderator';
+
+  // Helper to bold names in the content
+  const renderContent = (content: string) => {
+    if (!namesToBold.length) return content;
+
+    const selfName = isModerator ? 'Moderator' : message.senderName;
+
+    // Filter out empty names, the sender's own name, and sort by length descending
+    const names = namesToBold
+      .filter(n => n && n.trim().length > 0 && n.toLowerCase() !== selfName?.toLowerCase())
+      .sort((a, b) => b.length - a.length);
+    
+    if (names.length === 0) return content;
+
+    // Escape special regex characters in names
+    const escapedNames = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi');
+    
+    const parts = content.split(pattern);
+    
+    return parts.map((part, i) => {
+      const isName = names.some(n => n.toLowerCase() === part.toLowerCase());
+      if (isName) {
+        return <strong key={i} className="font-extrabold">{part}</strong>;
+      }
+      return part;
+    });
+  };
+
+  const isThinkingMessage = message.content.endsWith('is thinking...');
 
   // Calculate if this is a "new" message only once when the component mounts
   // or when the message ID changes. This prevents the typewriter from 
   // stopping mid-way if the 2000ms timer expires during typing.
   const [isNewAgentMessage] = useState(() => {
-    return !isUser && !isModerator && (Date.now() - message.timestamp < 2000);
+    return !isUser && !isModerator && !isThinkingMessage && (Date.now() - message.timestamp < 2000);
   });
 
   const [displayedContent, setDisplayedContent] = useState(isNewAgentMessage ? '' : message.content);
@@ -53,7 +181,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onType })
       }
     }
 
-    const typingSpeed = 50; // 50ms per word
+    const typingSpeed = 100; // 100ms per word (half the speed)
     
     const timer = setInterval(() => {
       if (tokenIndex >= tokens.length) {
@@ -101,7 +229,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onType })
     return colors[base] || colors.emerald;
   };
 
-  const isThinkingMessage = message.content.endsWith('is thinking...');
   const colorTheme = isUser ? getColorClasses('bg-slate-50') : getColorClasses(message.color || 'bg-emerald-50', isThinkingMessage);
   
   const bubbleStyles = clsx(
@@ -125,7 +252,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onType })
         {isUser ? (
           <User size={32} className="text-slate-400" />
         ) : message.avatarUrl ? (
-          <img src={message.avatarUrl} alt={message.senderName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <AutoCroppedImage 
+            src={message.avatarUrl} 
+            alt={message.senderName} 
+            className="w-full h-full object-cover" 
+            showHoverPreview={true}
+          />
         ) : (
           <div className={clsx('w-full h-full flex items-center justify-center text-white font-bold text-xl', colorTheme.avatar)}>
             {message.senderName?.charAt(0) || <Bot size={32} />}
@@ -156,7 +288,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onType })
         </div>
         
         <div className={bubbleStyles}>
-          {displayedContent}
+          {renderContent(displayedContent)}
         </div>
       </div>
     </div>

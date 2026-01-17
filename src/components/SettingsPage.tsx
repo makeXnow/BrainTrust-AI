@@ -59,14 +59,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdate, 
 
   const formatModelName = (id: string, isImageModel: boolean = false) => {
     const prefix = (id.startsWith('gemini-') || id.startsWith('imagen-')) ? 'Gemini' : 'OpenAI';
-    const price = isImageModel ? getModelPrice(id) : '';
-    
-    if (price) {
-      // We use a long dash and padding to simulate the "right side" look 
-      // since standard HTML <option> doesn't support complex CSS layout.
-      return `${prefix}: ${id.padEnd(25, '\u00A0')} — ${price}`;
-    }
     return `${prefix}: ${id}`;
+  };
+
+  const ImageModelOption: React.FC<{ id: string; current: string; onSelect: (id: string) => void }> = ({ id, current, onSelect }) => {
+    const price = getModelPrice(id);
+    const isSelected = id === current;
+    return (
+      <div 
+        onClick={() => onSelect(id)}
+        className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-base-300 transition-colors ${isSelected ? 'bg-primary/10 text-primary font-bold' : ''}`}
+      >
+        <span>{formatModelName(id, true)}</span>
+        <span className="text-slate-400 text-xs font-mono">{price}</span>
+      </div>
+    );
   };
 
   return (
@@ -133,23 +140,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdate, 
                 <label className="label">
                   <span className="label-text">Image Model</span>
                 </label>
-                <select 
-                  className="select select-bordered w-full" 
-                  value={settings.imageModel}
-                  onChange={(e) => onUpdate({ imageModel: e.target.value })}
-                >
-                  {availableImageModels.map(m => (
-                    <option key={m} value={m}>{formatModelName(m)}</option>
-                  ))}
-                  {availableImageModels.length === 0 && (
-                    <>
-                      <option value="imagen-4-standard">{formatModelName('imagen-4-standard')}</option>
-                      <option value="imagen-3-fast">{formatModelName('imagen-3-fast')}</option>
-                      <option value="dall-e-3">{formatModelName('dall-e-3')}</option>
-                      <option value="dall-e-2">{formatModelName('dall-e-2')}</option>
-                    </>
-                  )}
-                </select>
+                <div className="dropdown w-full">
+                  <div tabIndex={0} role="button" className="select select-bordered w-full flex items-center justify-between px-4 font-normal h-[3rem]">
+                    <span>{formatModelName(settings.imageModel, true)}</span>
+                    <span className="text-slate-400 text-xs font-mono ml-auto mr-4">{getModelPrice(settings.imageModel)}</span>
+                  </div>
+                  <ul tabIndex={0} className="dropdown-content z-[100] menu p-0 shadow bg-base-100 rounded-box w-full mt-1 max-h-60 overflow-y-auto block border border-base-300">
+                    {(availableImageModels.length > 0 ? availableImageModels : ['imagen-4-standard', 'imagen-3-fast', 'dall-e-3', 'dall-e-2']).map(m => (
+                      <li key={m}>
+                        <ImageModelOption id={m} current={settings.imageModel} onSelect={(id) => {
+                          onUpdate({ imageModel: id });
+                          (document.activeElement as HTMLElement)?.blur();
+                        }} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
               <AgentCountSelector 
                 value={settings.agentCount} 
@@ -213,7 +219,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdate, 
                 placeholder="Template for generating panelist avatars..."
               />
               <label className="label">
-                <span className="label-text-alt opacity-50">Variables: {"{{firstName}}"}, {"{{description}}"}, {"{{fullPersonality}}"}</span>
+                <span className="label-text-alt opacity-50">Variables: {"{{firstName}}"}, {"{{description}}"}, {"{{fullPersonality}}"}, {"{{color}}"}</span>
               </label>
             </div>
           </section>

@@ -152,27 +152,34 @@ export const useChat = () => {
       .join('\n');
   };
 
+  const getColorName = (tailwindClass?: string) => {
+    if (!tailwindClass) return 'professional';
+    const colorMap: Record<string, string> = {
+      'bg-orange-50': 'orange',
+      'bg-yellow-50': 'yellow',
+      'bg-emerald-50': 'emerald green',
+      'bg-sky-50': 'sky blue',
+      'bg-indigo-50': 'indigo',
+      'bg-purple-50': 'purple',
+      'bg-pink-50': 'pink',
+      'bg-rose-50': 'rose',
+    };
+    return colorMap[tailwindClass] || 'professional';
+  };
+
   const replaceImageVariables = (template: string, panelist: Panelist) => {
     const promptTemplate = template || BASE_IMAGE_PROMPT;
     const personalitySlug = panelist.fullPersonality.slice(0, 400);
     const safetyRegex = /trauma|emergency|mass-casualty|ER|blood|violence|death|kill|dead|gun|weapon|hospital|injury|accident|victim|murder|attack/gi;
     const safeDescription = panelist.description.replace(safetyRegex, 'professional');
     const safeContext = personalitySlug.replace(safetyRegex, 'medical or professional');
+    const colorName = getColorName(panelist.color);
     
     return promptTemplate
       .replace(/\{\{firstName\}\}/g, panelist.firstName)
       .replace(/\{\{description\}\}/g, safeDescription)
-      .replace(/\{\{fullPersonality\}\}/g, safeContext);
-  };
-
-  const getLengthConstraint = (style: string) => {
-    const s = (style || '').toLowerCase();
-    if (s.includes('punchy')) return "Strictly maximum 15 words.";
-    if (s.includes('nuanced')) return "Exactly 2 thoughtful sentences.";
-    if (s.includes('academic')) return "Maximum 3 sentences, professional tone.";
-    if (s.includes('grumpy')) return "One short, blunt sentence (max 12 words).";
-    if (s.includes('vibrant')) return "2-3 sentences using a metaphor or anecdote.";
-    return "Keep it concise (2 sentences max).";
+      .replace(/\{\{fullPersonality\}\}/g, safeContext)
+      .replace(/\{\{color\}\}/g, colorName);
   };
 
   const startDiscussion = async (topic: string, userMessage: Message) => {
@@ -230,7 +237,6 @@ export const useChat = () => {
       // --- PARALLEL INITIALIZATION ---
       // Kick off image generation for all and the FIRST response generation in parallel
       const firstPanelist = initialPanelists[0];
-      const constraint = getLengthConstraint(firstPanelist.communicationStyle);
 
       const fetchJsonWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs: number) => {
         const controller = new AbortController();
@@ -250,7 +256,7 @@ export const useChat = () => {
           const imgLogId = addDebugLog({
             type: 'request',
             endpoint: `Generating image for ${p.shorthandName || p.firstName}`,
-            payload: { prompt: imagePrompt, model: state.settings.imageModel },
+            payload: { prompt: imagePrompt, model: state.settings.imageModel, firstName: p.firstName },
             model: state.settings.imageModel
           });
 
@@ -287,7 +293,7 @@ export const useChat = () => {
           const respLogId = addDebugLog({
             type: 'request',
             endpoint: `Generating ${firstPanelist.shorthandName || firstPanelist.firstName}'s first response`,
-            payload: { topic, enforcedConstraint: constraint },
+            payload: { topic },
             model: state.settings.model
           });
 
@@ -296,11 +302,11 @@ export const useChat = () => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-              panelist: firstPanelist,
-              topic,
-              history: firstHistory,
-              userName: state.settings.userName || 'You',
-              prompt: state.settings.responsePrompt.replace('{{lengthConstraint}}', constraint),
+                panelist: firstPanelist,
+                topic,
+                history: firstHistory,
+                userName: state.settings.userName || 'You',
+                prompt: state.settings.responsePrompt,
                 model: state.settings.model
               }),
             }, 120_000);
@@ -308,7 +314,7 @@ export const useChat = () => {
             addDebugLog({
               type: 'response',
               endpoint: `Generating ${firstPanelist.shorthandName || firstPanelist.firstName}'s first response`,
-              payload: { topic, enforcedConstraint: constraint },
+              payload: { topic },
               response: responseData,
               model: state.settings.model
             }, respLogId);
@@ -394,65 +400,111 @@ export const useChat = () => {
     const sequence = subsetToRun || [...allPanelists].sort(() => Math.random() - 0.5);
     let messages = [...currentMessages];
 
+    const msPerWord = 100; // must match MessageBubble typingSpeed
+    const estimateTypingMs = (text: string) => {
+      const tokens = text.match(/\S+\s*/g) || [];
+      // Add a small buffer so we don't overlap too early
+      return Math.min(30_000, tokens.length * msPerWord + 300);
+    };
+
+    const fetchJsonWithTimeout = async (input: RequestInfo | URL, init: RequestInit, timeoutMs: number) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(input, { ...init, signal: controller.signal });
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const startResponseRequest = (panelist: Panelist) => {
+      const logId = addDebugLog({ 
+        type: 'request', 
+        endpoint: `Generating ${panelist.shorthandName || panelist.firstName}'s response`, 
+        payload: { topic, firstName: panelist.firstName }, 
+        model: state.settings.model 
+      });
+
+      const promise = fetchJsonWithTimeout('/api/generate-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          panelist,
+          topic,
+          history: formatHistory(messages),
+          userName: state.settings.userName || 'You',
+          prompt: state.settings.responsePrompt,
+          model: state.settings.model
+        }),
+      }, 120_000)
+        .then((data: any) => {
+          addDebugLog({ 
+            type: 'response', 
+            endpoint: `Generating ${panelist.shorthandName || panelist.firstName}'s response`, 
+            payload: { topic }, 
+            response: data,
+            model: state.settings.model 
+          }, logId);
+          return data;
+        })
+        .catch((err: any) => {
+          addDebugLog({ type: 'error', endpoint: 'runDiscussionRound', payload: err?.message || String(err) }, logId);
+          return { summary: 'Sorry — I had trouble generating that response.', thoughts: '' };
+        });
+
+      return promise;
+    };
+
+    // Start the first agent call immediately (so it can run while we’re waiting/animating)
+    let currentPromise: Promise<any> | null = null;
+    if (sequence.length > 0) {
+      currentPromise = startResponseRequest(sequence[0]);
+    }
+
     for (let i = 0; i < sequence.length; i++) {
       const panelist = sequence[i];
-      
-      // Before kicking off the current agent's API call, check if there's a NEXT one to pre-fetch
-      // Actually, logic is simpler: show thinking state for CURRENT one, while waiting for its API.
-      
-      try {
-        const constraint = getLengthConstraint(panelist.communicationStyle);
-        
-        // Show "Thinking" message immediately
-        const thinkingId = Math.random().toString(36).substring(7);
-        const thinkingMessage: Message = {
-          id: thinkingId,
-          role: 'agent',
-          content: `${panelist.firstName} is thinking...`,
-          senderName: panelist.firstName,
-          senderTitle: panelist.description,
-          panelistId: panelist.id,
-          color: panelist.color,
-          avatarUrl: panelist.avatarUrl,
-          timestamp: Date.now(),
-        };
-        
-        setState(prev => ({ ...prev, messages: [...prev.messages, thinkingMessage] }));
 
-        const logId = addDebugLog({ 
-          type: 'request', 
-          endpoint: `Generating ${panelist.shorthandName || panelist.firstName}'s response`, 
-          payload: { topic, enforcedConstraint: constraint }, 
-          model: state.settings.model 
-        });
-        
-        const res = await fetch('/api/generate-response', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            panelist,
-            topic,
-            history: formatHistory(messages),
-            userName: state.settings.userName || 'You',
-            prompt: state.settings.responsePrompt.replace('{{lengthConstraint}}', constraint),
-            model: state.settings.model
-          }),
-        });
-        const data: any = await res.json();
-        
-        addDebugLog({ 
-          type: 'response', 
-          endpoint: `Generating ${panelist.shorthandName || panelist.firstName}'s response`, 
-          payload: { topic }, 
-          response: data,
-          model: state.settings.model 
-        }, logId);
+      // Gate: wait until previous agent finishes typing, then pause 1s
+      const prev = messages[messages.length - 1];
+      if (prev?.role === 'agent' && typeof prev.content === 'string' && !prev.content.endsWith('is thinking...')) {
+        await new Promise(resolve => setTimeout(resolve, estimateTypingMs(prev.content)));
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      try {
+        // Ensure we have a promise for this panelist (should exist for i=0, started above)
+        if (!currentPromise) currentPromise = startResponseRequest(panelist);
+
+        // If not ready after the 1s pause, show thinking bubble
+        const thinkingId = Math.random().toString(36).substring(7);
+        let thinkingShown = false;
+
+        const showThinkingTimer = setTimeout(() => {
+          thinkingShown = true;
+          const thinkingMessage: Message = {
+            id: thinkingId,
+            role: 'agent',
+            content: `${panelist.firstName} is thinking...`,
+            senderName: panelist.firstName,
+            senderTitle: panelist.description,
+            panelistId: panelist.id,
+            color: panelist.color,
+            avatarUrl: panelist.avatarUrl,
+            timestamp: Date.now(),
+          };
+          setState(prevState => ({ ...prevState, messages: [...prevState.messages, thinkingMessage] }));
+        }, 0);
+
+        // Wait for the response (might already be resolved)
+        const data: any = await currentPromise;
+        clearTimeout(showThinkingTimer);
 
         const realMessage: Message = {
           id: Math.random().toString(36).substring(7),
           role: 'agent',
-          content: data.summary,
-          thoughts: data.thoughts,
+          content: data?.summary || 'No response generated.',
+          thoughts: data?.thoughts,
           senderName: panelist.firstName,
           senderTitle: panelist.description,
           panelistId: panelist.id,
@@ -461,17 +513,15 @@ export const useChat = () => {
           timestamp: Date.now(),
         };
 
-        // Replace thinking message with real message
-        setState(prev => {
-          const filtered = prev.messages.filter(m => m.id !== thinkingId);
-          return { ...prev, messages: [...filtered, realMessage] };
+        setState(prevState => {
+          const filtered = thinkingShown ? prevState.messages.filter(m => m.id !== thinkingId) : prevState.messages;
+          return { ...prevState, messages: [...filtered, realMessage] };
         });
-        
+
         messages = [...messages, realMessage];
 
-        // Wait for the word-by-word animation to roughly finish before moving to next person
-        // Average response is maybe 20-30 words? at 50ms = 1.5s
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Start the NEXT agent request immediately (so it runs during this message’s typing)
+        currentPromise = (i + 1 < sequence.length) ? startResponseRequest(sequence[i + 1]) : null;
 
       } catch (error: any) {
         addDebugLog({ type: 'error', endpoint: 'runDiscussionRound', payload: error.message });

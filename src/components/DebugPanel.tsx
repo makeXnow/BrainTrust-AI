@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DebugLog } from '@/types';
 import { Cpu, UserCheck, MessageSquare, AlertCircle, Info, Settings2, Brain } from 'lucide-react';
 
@@ -6,24 +6,107 @@ interface DebugPanelProps {
   logs: DebugLog[];
 }
 
+const AutoCroppedImage: React.FC<{ src: string; alt?: string; className?: string }> = ({ src, alt, className }) => {
+  const [croppedSrc, setCroppedSrc] = useState<string>(src);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      try {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+        const threshold = 240;
+
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const i = (y * canvas.width + x) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            
+            if (r < threshold || g < threshold || b < threshold) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX > minX && maxY > minY) {
+          const width = maxX - minX;
+          const height = maxY - minY;
+          if (minX > 5 || minY > 5 || (canvas.width - maxX) > 5 || (canvas.height - maxY) > 5) {
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = width;
+            cropCanvas.height = height;
+            const cropCtx = cropCanvas.getContext('2d');
+            if (cropCtx) {
+              cropCtx.drawImage(img, minX, minY, width, height, 0, 0, width, height);
+              try {
+                setCroppedSrc(cropCanvas.toDataURL());
+              } catch (err) {
+                console.warn("Could not export cropped canvas (tainted?):", err);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not autocrop image:", e);
+      }
+    };
+  }, [src]);
+
+  return <img src={croppedSrc} alt={alt} className={className} referrerPolicy="no-referrer" />;
+};
+
 export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
-  const discoveredAvatars = React.useMemo(() => {
-    const avatars: Record<string, string> = {};
+  const discoveredProfiles = React.useMemo(() => {
+    const profiles: Record<string, { avatarUrl?: string; description?: string }> = {};
     logs.forEach(log => {
+      // 1. Collect from Panelist Generation
       if (log.endpoint.toLowerCase().includes('panelists') && log.response?.panelists) {
         log.response.panelists.forEach((p: any) => {
-          if (p.avatarUrl && p.firstName) avatars[p.firstName] = p.avatarUrl;
+          if (p.firstName) {
+            profiles[p.firstName] = { 
+              avatarUrl: p.avatarUrl || profiles[p.firstName]?.avatarUrl,
+              description: p.description || profiles[p.firstName]?.description 
+            };
+          }
         });
       }
-      if (log.endpoint.toLowerCase().includes('generating image') && log.response?.url) {
-        const name = log.payload?.name || log.payload?.firstName;
-        if (name) avatars[name] = log.response.url;
+      // 2. Collect from Image Generation
+      if (log.endpoint.toLowerCase().includes('generating image')) {
+        const name = log.payload?.firstName || log.payload?.name;
+        if (name && log.response?.url) {
+          profiles[name] = { 
+            ...profiles[name],
+            avatarUrl: log.response.url 
+          };
+        }
       }
-      if (log.response?.avatarUrl && log.response?.name) {
-        avatars[log.response.name] = log.response.avatarUrl;
+      // 3. Collect from Agent/Moderator Responses
+      const resp = log.response;
+      const name = resp?.name || log.payload?.firstName || log.payload?.name;
+      if (name) {
+        profiles[name] = {
+          avatarUrl: resp?.avatarUrl || profiles[name]?.avatarUrl,
+          description: resp?.role || profiles[name]?.description
+        };
       }
     });
-    return avatars;
+    return profiles;
   }, [logs]);
 
   const Card = ({ children }: { children: React.ReactNode }) => (
@@ -49,9 +132,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
     <div className="flex items-center gap-6 mb-10">
       <div className="w-24 h-24 rounded-full overflow-hidden border border-slate-100 shadow-sm flex-shrink-0 bg-slate-50 flex items-center justify-center">
         {avatarUrl ? (
-          <img src={avatarUrl} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <AutoCroppedImage src={avatarUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <UserCheck className="w-12 h-12 text-slate-300" />
+          <User className="w-12 h-12 text-slate-300" />
         )}
       </div>
       <div className="flex-1">
@@ -85,16 +168,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
     );
   };
 
-  const getLengthConstraint = (style: string) => {
-    const s = style.toLowerCase();
-    if (s.includes('punchy')) return "Max 15 words";
-    if (s.includes('nuanced')) return "2 thoughtful sentences";
-    if (s.includes('academic')) return "Max 3 sentences (formal)";
-    if (s.includes('grumpy')) return "1 blunt sentence (max 12 words)";
-    if (s.includes('vibrant')) return "2-3 sentences (metaphoric)";
-    return "2 sentences max";
-  };
-
   const renderResponse = (log: DebugLog) => {
     const { response, endpoint } = log;
     if (!response || typeof response !== 'object') return null;
@@ -104,36 +177,34 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
       const panelists = response.panelists || (Array.isArray(response) ? response : []);
       return (
         <div className="space-y-8 mt-4">
-          {panelists.map((p: any, i: number) => (
-            <Card key={i}>
-                <CardHeader 
-                  name={p.firstName || 'Expert'} 
-                  description={p.description || 'Consultant'} 
-                  avatarUrl={p.avatarUrl || (p.firstName ? discoveredAvatars[p.firstName] : undefined)} 
-                />
-                
-                <InfoSection 
-                  label="Communication Style" 
-                  value={p.communicationStyle || 'Professional and balanced'} 
-                />
-                
-                <InfoSection 
-                  label="Typical Length" 
-                  value={getLengthConstraint(p.communicationStyle || '')} 
-                />
+          {panelists.map((p: any, i: number) => {
+            const profile = p.firstName ? discoveredProfiles[p.firstName] : null;
+            return (
+              <Card key={i}>
+                  <CardHeader 
+                    name={p.firstName || 'Expert'} 
+                    description={p.description || profile?.description || 'Consultant'} 
+                    avatarUrl={p.avatarUrl || profile?.avatarUrl} 
+                  />
+                  
+                  <InfoSection 
+                    label="Communication Style" 
+                    value={p.communicationStyle || 'Professional and balanced'} 
+                  />
 
-                <InfoSection 
-                  label="Personality Profile" 
-                  value={p.fullPersonality} 
-                />
+                  <InfoSection 
+                    label="Personality Profile" 
+                    value={p.fullPersonality} 
+                  />
 
-                <InfoSection 
-                  label="Opening Statement" 
-                  value={p.introMessage} 
-                  last 
-                />
-            </Card>
-          ))}
+                  <InfoSection 
+                    label="Opening Statement" 
+                    value={p.introMessage} 
+                    last 
+                  />
+              </Card>
+            );
+          })}
         </div>
       );
     }
@@ -141,13 +212,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
     // 2. Agent Response (Thoughts + Summary)
     if (response.thoughts || response.summary) {
       const agentName = response.name || 'Agent Response';
+      const profile = discoveredProfiles[agentName];
       return (
         <div className="space-y-4 mt-4">
           <Card>
             <CardHeader 
               name={agentName} 
-              description={response.role || 'Action & Reflection'} 
-              avatarUrl={response.avatarUrl || discoveredAvatars[agentName]} 
+              description={response.role || profile?.description || 'Action & Reflection'} 
+              avatarUrl={response.avatarUrl || profile?.avatarUrl} 
             />
 
             {response.thoughts && (
@@ -171,13 +243,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
 
     // 3. Moderator Response
     if (response.summary && endpoint.toLowerCase().includes('moderator')) {
+      const profile = discoveredProfiles['Moderator'];
       return (
         <div className="mt-4">
           <Card>
             <CardHeader 
               name="Moderator" 
-              description="Synthesis & Conclusion" 
-              avatarUrl={response.avatarUrl || discoveredAvatars['Moderator']} 
+              description={profile?.description || "Synthesis & Conclusion"} 
+              avatarUrl={response.avatarUrl || profile?.avatarUrl} 
             />
 
             <InfoSection 
@@ -196,12 +269,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs }) => {
       return (
         <div className="mt-4">
           <div className="w-48 h-48 rounded-full overflow-hidden border border-slate-200 shadow-sm transition-all hover:shadow-md">
-            <img 
-              src={imageUrl} 
-              alt="Generated avatar" 
-              className="w-full h-full object-cover" 
-              referrerPolicy="no-referrer" 
-            />
+            <AutoCroppedImage src={imageUrl} alt="Generated avatar" className="w-full h-full object-cover" />
           </div>
         </div>
       );

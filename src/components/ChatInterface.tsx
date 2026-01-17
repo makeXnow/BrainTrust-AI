@@ -14,6 +14,7 @@ interface ChatInterfaceProps {
   topic: string;
   suggestions: string[];
   autoResponse: string | null;
+  userName?: string;
   onSendMessage: (text: string) => void;
   onSelectSuggestion: (text: string) => void;
   onClearAutoResponse: () => void;
@@ -27,6 +28,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   topic,
   suggestions,
   autoResponse,
+  userName,
   onSendMessage,
   onSelectSuggestion,
   onClearAutoResponse,
@@ -34,6 +36,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [input, setInput] = React.useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const namesToBold = React.useMemo(() => {
+    const names = panelists.map(p => p.firstName);
+    if (userName) names.push(userName);
+    names.push('Moderator');
+    return names;
+  }, [panelists, userName]);
 
   const scrollToBottom = () => {
     if (scrollRef.current) {
@@ -104,14 +113,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-20">
               <div className="max-w-md">
                 <h2 className="text-3xl font-bold mb-2 text-slate-800">What's on your mind?</h2>
-                <p className="opacity-70 text-slate-600">Start a discussion with a panel of AI experts. Choose a suggestion or type your own topic.</p>
+                <p className="opacity-70 text-slate-600">
+                  Start a discussion with a panel of AI experts.<br />
+                  Choose a suggestion or type your own topic.
+                </p>
               </div>
               <PromptSuggestions suggestions={suggestions} onSelect={onSelectSuggestion} disabled={isGenerating} />
             </div>
           )}
 
           {displayMessages.map((m) => (
-            <MessageBubble key={m.id} message={m} onType={scrollToBottom} />
+            <MessageBubble 
+              key={m.id} 
+              message={m} 
+              namesToBold={namesToBold}
+              onType={scrollToBottom} 
+            />
           ))}
 
           {(status === 'generating_panelists' || (status === 'introductions' && displayMessages.length <= 1)) && (
