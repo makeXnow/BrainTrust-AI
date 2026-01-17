@@ -45,11 +45,28 @@ const AutoResizingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaEl
 };
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdate, onClose, availableModels, availableImageModels }) => {
-  const formatModelName = (id: string) => {
-    if (id.startsWith('gemini-') || id.startsWith('imagen-')) {
-      return `Gemini: ${id}`;
+  const getModelPrice = (id: string) => {
+    const prices: Record<string, string> = {
+      'dall-e-2': '$0.02',
+      'dall-e-3': '$0.04',
+      'gpt-image-1.5': '$0.05',
+      'imagen-3-fast': '$0.02',
+      'imagen-4-standard': '$0.04',
+      'imagen-4-ultra': '$0.06',
+    };
+    return prices[id] || '';
+  };
+
+  const formatModelName = (id: string, isImageModel: boolean = false) => {
+    const prefix = (id.startsWith('gemini-') || id.startsWith('imagen-')) ? 'Gemini' : 'OpenAI';
+    const price = isImageModel ? getModelPrice(id) : '';
+    
+    if (price) {
+      // We use a long dash and padding to simulate the "right side" look 
+      // since standard HTML <option> doesn't support complex CSS layout.
+      return `${prefix}: ${id.padEnd(25, '\u00A0')} — ${price}`;
     }
-    return `OpenAI: ${id}`;
+    return `${prefix}: ${id}`;
   };
 
   return (
