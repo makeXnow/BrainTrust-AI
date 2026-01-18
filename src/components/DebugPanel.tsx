@@ -205,7 +205,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({ logs, panelists, onPanel
         
         Object.keys(reasoning).forEach(name => {
           // If we have allowedNames (from debug log), filter out anyone not in that list
-          if (allowedNames && !allowedNames.some(an => an.toLowerCase() === name.toLowerCase())) {
+          if (allowedNames && !allowedNames.some((an: string) => an.toLowerCase() === name.toLowerCase())) {
             return;
           }
 

@@ -21,6 +21,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const genAI = new GoogleGenerativeAI(context.env.GOOGLE_GENERATIVE_AI_API_KEY);
       const gemini = genAI.getGenerativeModel({ model: model });
       
+      const systemPrompt = prompt;
       const result = await gemini.generateContent({
         contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
         generationConfig: {

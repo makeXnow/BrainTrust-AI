@@ -62,21 +62,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
     }
   };
 
-  const isThinkingMessage = message.isThinking || message.content.endsWith('is thinking...');
+  const isThinkingMessage = message.isThinking || (message.content || '').endsWith('is thinking...');
 
   // Calculate if this is a "new" message only once when the component mounts
   // or when the message ID changes. This prevents the typewriter from 
   // stopping mid-way if the 2000ms timer expires during typing.
-  const [isNewAgentMessage] = useState(() => {
+  const [isNewAgentMessage] = useState<boolean>(() => {
     return !isUser && !isModerator && !isThinkingMessage && (Date.now() - message.timestamp < 3000);
   });
 
-  const [displayedContent, setDisplayedContent] = useState(() => {
-    if (isNewAgentMessage) {
-      const tokens = message.content.match(/\S+\s*/g) || [];
-      return tokens.length > 0 ? tokens[0] : '';
+  const [displayedContent, setDisplayedContent] = useState<string>(() => {
+    const content = message.content || '';
+    if (!isUser && !isModerator && !isThinkingMessage && (Date.now() - message.timestamp < 3000)) {
+      const tokens = content.match(/\S+\s*/g) || [];
+      return (tokens[0] || '') as string;
     }
-    return message.content;
+    return content;
   });
   const [isTyping, setIsTyping] = useState(isNewAgentMessage);
 
@@ -96,11 +97,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
     }
 
     // Split into tokens (word + following whitespace) to preserve original formatting
-    const tokens = message.content.match(/\S+\s*/g) || [];
+    const tokens = (message.content || '').match(/\S+\s*/g) || [];
     
     // Find how many tokens are already displayed if we are resuming
     let tokenIndex = 0;
-    if (displayedContent.length > 0) {
+    if (displayedContent && displayedContent.length > 0) {
       let currentLen = 0;
       for (let j = 0; j < tokens.length; j++) {
         currentLen += tokens[j].length;

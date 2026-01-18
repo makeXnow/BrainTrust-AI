@@ -263,7 +263,7 @@ export const useChat = () => {
   useEffect(() => {
     fetch('/api/models')
       .then(async res => {
-        const data = await res.json();
+        const data = await res.json() as any;
         if (res.ok) {
           if (data.models) setAvailableModels(data.models);
           if (data.imageModels) setAvailableImageModels(data.imageModels);
@@ -1122,15 +1122,14 @@ export const useChat = () => {
     const getNextPanelist = async (currentState: ChatState, currentLocalMessages: Message[]): Promise<{ panelist: Panelist | null, decision?: ModeratorDecision }> => {
       if (signal?.aborted) return { panelist: null };
       const { settings, mentionStack, roundOrder, alreadySpoken, panelists } = currentState;
+      const userName = settings.userName || 'You';
+
+      // Find last speaker to exclude them (Rule 2)
+      const lastMessage = currentLocalMessages.length > 0 ? currentLocalMessages[currentLocalMessages.length - 1] : null;
+      const lastSpeakerName = lastMessage ? (lastMessage.senderName || (lastMessage.role === 'user' ? userName : '')) : '';
 
       if (settings.responseMode === 'moderator') {
         // AI Moderator logic
-        const userName = settings.userName || 'You';
-
-        // Find last speaker to exclude them (Rule 2)
-        const lastMessage = currentLocalMessages.length > 0 ? currentLocalMessages[currentLocalMessages.length - 1] : null;
-        const lastSpeakerName = lastMessage ? (lastMessage.senderName || (lastMessage.role === 'user' ? userName : '')) : '';
-
         // Rule 1: Right after intros, don't include user (history is just user prompt + intros)
         const isFirstTurnAfterIntros = currentLocalMessages.length === panelists.length + 1;
 

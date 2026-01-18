@@ -1,6 +1,6 @@
-name = "braintrust-ai"
+name = "braintrustai"
 compatibility_date = "2024-01-01"
-# pages_build_output_dir = "dist"
+pages_build_output_dir = "dist"
 
 [vars]
 # Add non-secret variables here
