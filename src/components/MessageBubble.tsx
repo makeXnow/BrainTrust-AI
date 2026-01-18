@@ -269,7 +269,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
         className={clsx(
           'w-16 h-16 rounded-full flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden border transition-all duration-300',
           isUser ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' : 'bg-base-300 dark:bg-slate-800 border-transparent',
-          !isUser && message.panelistId && 'cursor-pointer hover:border-primary/50'
+          !isUser && message.panelistId && 'cursor-pointer hover:border-primary/50',
+          isThinkingMessage && 'opacity-50'
         )}
         onClick={() => !isUser && message.panelistId && onAvatarClick?.(message.panelistId)}
       >

@@ -59,12 +59,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ...allModels
         .filter(model => model.id.startsWith('dall-e-') || model.id.startsWith('gpt-image-'))
         .map(model => model.id),
+      'imagen-4.0-ultra-generate-001',
+      'imagen-4.0-generate-001',
+      'imagen-3.0-generate-002',
       'imagen-3.0-generate-001',
-      'imagen-3.0-fast-generate-001',
       'imagen-2.0-generate-001'
     ].sort((a, b) => {
         // Put gpt-image and newest imagen models at the top
-        const isLatest = (s: string) => s.includes('gpt-image') || s.includes('imagen-3');
+        const isLatest = (s: string) => s.includes('gpt-image') || s.includes('imagen-4') || s.includes('imagen-3');
         if (isLatest(a) && !isLatest(b)) return -1;
         if (!isLatest(a) && isLatest(b)) return 1;
         return a.localeCompare(b);

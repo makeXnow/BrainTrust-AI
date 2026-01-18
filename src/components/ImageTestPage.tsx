@@ -8,6 +8,11 @@ const getModelPrice = (id: string) => {
     'imagen-3-fast': '$0.02',
     'imagen-4-standard': '$0.04',
     'imagen-4-ultra': '$0.06',
+    'imagen-4.0-generate-001': '$0.04',
+    'imagen-4.0-ultra-generate-001': '$0.06',
+    'imagen-4.0-fast-generate-001': '$0.02',
+    'imagen-3.0-generate-001': '$0.04',
+    'imagen-3.0-generate-002': '$0.04',
   };
   return prices[id] || '';
 };
@@ -78,7 +83,7 @@ export const ImageTestPage: React.FC = () => {
     }
   };
 
-  const defaultModels = ['imagen-4-standard', 'imagen-4-ultra', 'imagen-3-fast', 'dall-e-3', 'dall-e-2'];
+  const defaultModels = ['imagen-4.0-generate-001', 'imagen-4.0-ultra-generate-001', 'imagen-3.0-generate-001', 'dall-e-3', 'dall-e-2'];
   const availableModels = models.length > 0 ? models : defaultModels;
 
   return (

@@ -137,10 +137,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       'gpt-image-1.5': '$0.05',
       'imagen-3.0-fast-generate-001': '$0.02',
       'imagen-3.0-generate-001': '$0.04',
+      'imagen-3.0-generate-002': '$0.04',
       'imagen-2.0-generate-001': '$0.01',
       'imagen-3-fast': '$0.02',
       'imagen-4-standard': '$0.04',
       'imagen-4-ultra': '$0.06',
+      'imagen-4.0-generate-001': '$0.04',
+      'imagen-4.0-ultra-generate-001': '$0.06',
+      'imagen-4.0-fast-generate-001': '$0.02',
     };
     return prices[id] || '';
   };
@@ -334,7 +338,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                           <span className="text-slate-400 dark:text-slate-500 text-xs font-mono ml-auto mr-4">{getModelPrice(settings.imageModel)}</span>
                         </div>
                         <ul tabIndex={0} className="dropdown-content z-[100] menu p-0 shadow bg-base-100 dark:bg-slate-800 rounded-box w-full mt-1 max-h-60 overflow-y-auto block border border-base-300 dark:border-slate-700">
-                          {(availableImageModels.length > 0 ? availableImageModels : ['imagen-4-standard', 'imagen-3-fast', 'dall-e-3', 'dall-e-2']).map(m => (
+                          {(availableImageModels.length > 0 ? availableImageModels : ['imagen-4.0-generate-001', 'imagen-3.0-generate-001', 'dall-e-3', 'dall-e-2']).map(m => (
                             <li key={m}>
                               <ImageModelOption id={m} current={settings.imageModel} onSelect={(id) => {
                                 onUpdate({ imageModel: id });

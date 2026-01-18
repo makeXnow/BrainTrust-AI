@@ -19,17 +19,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       
       // Map friendly model names to actual API model names (from ListModels API)
       const modelMapping: Record<string, string> = {
-        'imagen-4-standard': 'imagen-3.0-generate-001',
-        'imagen-4-ultra': 'imagen-3.0-generate-001',
-        'imagen-3-fast': 'imagen-3.0-fast-generate-001',
+        'imagen-4-standard': 'imagen-4.0-generate-001',
+        'imagen-4-ultra': 'imagen-4.0-ultra-generate-001',
+        'imagen-3-fast': 'imagen-3.0-generate-001',
         'imagen-3.0-generate-001': 'imagen-3.0-generate-001',
-        'imagen-3.0-fast-generate-001': 'imagen-3.0-fast-generate-001',
+        'imagen-3.0-fast-generate-001': 'imagen-3.0-generate-001',
         'imagen-2.0-generate-001': 'imagen-2.0-generate-001',
+        'imagen-4.0-generate-001': 'imagen-4.0-generate-001',
+        'imagen-4.0-ultra-generate-001': 'imagen-4.0-ultra-generate-001',
+        'imagen-4.0-fast-generate-001': 'imagen-4.0-generate-001',
       };
       
       const apiModel = modelMapping[model] || model;
       
       // Use direct REST API call to Imagen endpoint
+      // Revert to v1beta but use stable model IDs
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:predict?key=${apiKey}`;
       
       const response = await fetch(apiUrl, {
@@ -45,10 +49,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }),
       });
       
-      const data: any = await response.json();
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Invalid JSON response from API (Status ${response.status}): ${responseText.substring(0, 100)}`);
+      }
       
       if (!response.ok) {
-        throw new Error(data.error?.message || `API error: ${response.status}`);
+        throw new Error(data.error?.message || `API error: ${response.status} - ${responseText.substring(0, 100)}`);
       }
       
       // Extract base64 image from response

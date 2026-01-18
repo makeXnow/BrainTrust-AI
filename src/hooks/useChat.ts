@@ -127,29 +127,57 @@ export const useChat = () => {
     return controller.signal;
   }, []);
 
+  const extractFirstJsonObject = (str: string) => {
+    const firstBrace = str.indexOf('{');
+    if (firstBrace === -1) return str;
+    
+    let depth = 0;
+    for (let i = firstBrace; i < str.length; i++) {
+      if (str[i] === '{') depth++;
+      else if (str[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          return str.substring(firstBrace, i + 1);
+        }
+      }
+    }
+    return str.substring(firstBrace);
+  };
+
+  const safeJsonParse = (str: string, fallback: any = {}) => {
+    if (!str) return fallback;
+    try {
+      return JSON.parse(str);
+    } catch (e) {
+      try {
+        const extracted = extractFirstJsonObject(str);
+        return JSON.parse(extracted);
+      } catch (e2) {
+        console.error('Failed to parse JSON even after extraction', { original: str, error: e2 });
+        return fallback;
+      }
+    }
+  };
+
   const [state, setState] = useState<ChatState>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     let settings = INITIAL_SETTINGS;
     
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          settings = { ...INITIAL_SETTINGS, ...parsed };
-          
-          // Migration: responseModeEnabled (boolean) -> responseMode (string)
-          if (settings.responseMode === undefined && (settings as any).responseModeEnabled !== undefined) {
-            settings.responseMode = (settings as any).responseModeEnabled ? 'mentions' : 'random';
-          }
-          if (!settings.responseMode) {
-            settings.responseMode = 'random';
-          }
-          if (!settings.moderatorSelectionPrompt) {
-            settings.moderatorSelectionPrompt = BASE_MODERATOR_SELECTION_PROMPT;
-          }
+      const parsed = safeJsonParse(saved, null);
+      if (parsed && typeof parsed === 'object') {
+        settings = { ...INITIAL_SETTINGS, ...parsed };
+        
+        // Migration: responseModeEnabled (boolean) -> responseMode (string)
+        if (settings.responseMode === undefined && (settings as any).responseModeEnabled !== undefined) {
+          settings.responseMode = (settings as any).responseModeEnabled ? 'mentions' : 'random';
         }
-      } catch (e) {
-        console.error('Failed to parse settings from localStorage', e);
+        if (!settings.responseMode) {
+          settings.responseMode = 'random';
+        }
+        if (!settings.moderatorSelectionPrompt) {
+          settings.moderatorSelectionPrompt = BASE_MODERATOR_SELECTION_PROMPT;
+        }
       }
     }
     
@@ -404,7 +432,7 @@ export const useChat = () => {
 
       if (signal.aborted) return { publicComment: 'Aborted', thoughts: '' };
 
-      const parsedData = JSON.parse(data.raw || '{}');
+      const parsedData = safeJsonParse(data.raw);
       const cleanedData = {
         thoughts: getField(parsedData, 'thoughts', ['thinking', 'reasoning']),
         publicComment: getField(parsedData, 'publicComment', ['response', 'message']),
@@ -449,7 +477,7 @@ export const useChat = () => {
 
           if (signal.aborted) return { publicComment: 'Aborted', thoughts: '' };
 
-          const parsedRephrase = JSON.parse(rephraseData.raw || '{}');
+          const parsedRephrase = safeJsonParse(rephraseData.raw);
           const cleanedRephrase = {
             thoughts: getField(parsedRephrase, 'thoughts', ['thinking', 'reasoning']),
             publicComment: getField(parsedRephrase, 'publicComment', ['response', 'message']),
@@ -622,6 +650,29 @@ export const useChat = () => {
     return replacePromptVariables(template || BASE_IMAGE_PROMPT, panelist);
   };
 
+  const getField = (obj: any, baseKey: string, fallbacks: string[] = []) => {
+    if (!obj || typeof obj !== 'object') return '';
+    const keys = [
+      baseKey, 
+      `{{${baseKey}}}`, 
+      `${baseKey} `, 
+      ` {{${baseKey}}} `,
+      ...fallbacks, 
+      ...fallbacks.map(f => `{{${f}}}`)
+    ];
+    for (const k of keys) {
+      if (obj[k] !== undefined) return obj[k];
+    }
+    return '';
+  };
+
+  const msPerWord = 100; // must match MessageBubble typingSpeed
+  const estimateTypingMs = (text: string | null | undefined) => {
+    if (!text) return 300;
+    const tokens = String(text).match(/\S+\s*/g) || [];
+    return Math.min(30_000, tokens.length * msPerWord + 300);
+  };
+
   const startDiscussion = async (topic: string, userMessage: Message, signal: AbortSignal) => {
     setState(prev => ({ ...prev, topic, isGenerating: true, status: 'generating_panelists' }));
 
@@ -713,7 +764,7 @@ export const useChat = () => {
       if (signal.aborted) return;
 
       // Extract raw and parse it
-      const parsedRaw = JSON.parse(quickData.raw || '{}');
+      const parsedRaw = safeJsonParse(quickData.raw);
       let aiPanelists = [];
       if (parsedRaw.panelists && Array.isArray(parsedRaw.panelists)) {
         aiPanelists = parsedRaw.panelists;
@@ -846,7 +897,7 @@ export const useChat = () => {
 
           if (signal.aborted) return;
 
-          const parsedDetails = JSON.parse(detailsData.raw || '{}');
+          const parsedDetails = safeJsonParse(detailsData.raw);
           const cleanedDetails = {
             shortDescription: getField(parsedDetails, 'shortDescription', ['description', 'role']),
             fullPersonality: getField(parsedDetails, 'fullPersonality', ['personality', 'background', 'bio']),
@@ -930,7 +981,7 @@ export const useChat = () => {
             const intro: Message = {
               id: Math.random().toString(36).substring(7),
               role: 'agent',
-              content: pWithAvatar.introMessage,
+              content: pWithAvatar.introMessage || 'Hello!',
               senderName: pWithAvatar.firstName,
               senderTitle: pWithAvatar.shortDescription,
               communicationStyle: pWithAvatar.communicationStyle,
@@ -940,7 +991,7 @@ export const useChat = () => {
               timestamp: Date.now(),
             };
 
-            // Blank delay for 2s before thinking
+            // Blank delay for 1s before thinking
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (signal.aborted) return;
 
@@ -958,6 +1009,7 @@ export const useChat = () => {
               displayMessages: [...prev.displayMessages, thinkingMessage] 
             }));
             
+            // Show thinking for 2s
             await new Promise(resolve => setTimeout(resolve, 2000));
             if (signal.aborted) return;
 
@@ -968,6 +1020,9 @@ export const useChat = () => {
               displayMessages: [...prev.displayMessages.filter(m => m.id !== thinkingId), introWithNewTimestamp],
               messages: [...prev.messages, introWithNewTimestamp]
             }));
+
+            // Wait for animation to finish + 1s delay as requested
+            await new Promise(resolve => setTimeout(resolve, estimateTypingMs(introWithNewTimestamp.content) + 1000));
 
             introsCompleted++;
             
@@ -983,14 +1038,30 @@ export const useChat = () => {
 
               // Fire side effect OUTSIDE of setState to avoid double-triggers from React re-renders
               // Pass allIntros so the moderator knows about the introductions
-              runDiscussionRound(topic, finalizedPanelists, allIntros, undefined, undefined, signal);
+              // Also pass allIntros as initialDisplayMessages to avoid stale state in runDiscussionRound
+              runDiscussionRound(topic, finalizedPanelists, allIntros, undefined, allIntros, signal);
             }
           });
 
         } catch (error: any) {
           if (!signal.aborted) {
             addDebugLog({ type: 'error', endpoint: `Agent Processing: ${skeleton.firstName}`, payload: error.message });
-            introsCompleted++; // Still count it so we can finish the discussion
+            
+            // Critical fix: still increment introsCompleted and check for completion inside the lock
+            // to ensure runDiscussionRound is called even if an agent fails.
+            introLock = introLock.then(async () => {
+              introsCompleted++;
+              if (introsCompleted === totalAgents) {
+                setState(prev => ({ 
+                  ...prev, 
+                  status: 'discussion',
+                  roundOrder: finalizedPanelists.map(fp => fp.id),
+                  alreadySpoken: [],
+                  consecutiveAgentCount: 0
+                }));
+                runDiscussionRound(topic, finalizedPanelists, allIntros, undefined, allIntros, signal);
+              }
+            });
           }
         }
       });
@@ -1002,9 +1073,11 @@ export const useChat = () => {
     }
   };
 
-  const runDiscussionRound = async (topic: string, allPanelists: Panelist[], currentMessages: Message[], subsetToRun?: Panelist[], initialDisplayMessages?: Message[], signal?: AbortSignal) => {
+  const runDiscussionRound = async (topic: string, allPanelists: Panelist[], currentMessages: Message[], subsetToRun?: Panelist[], initialDisplayMessages?: Message[], signal?: AbortSignal, excludeUserOnFirstTurn: boolean = false) => {
     if (roundInProgressRef.current) return;
     roundInProgressRef.current = true;
+
+    let isFirstIteration = true;
 
     // If subsetToRun is provided, we're likely continuing a round (like after intros)
     // or starting a fresh one. We should sync the state trackers first.
@@ -1032,12 +1105,6 @@ export const useChat = () => {
     let messages = [...currentMessages];
     let displayMessages = initialDisplayMessages || [...state.displayMessages];
 
-    const msPerWord = 100; // must match MessageBubble typingSpeed
-    const estimateTypingMs = (text: string) => {
-      const tokens = text.match(/\S+\s*/g) || [];
-      return Math.min(30_000, tokens.length * msPerWord + 300);
-    };
-
     const getNextPanelist = async (currentState: ChatState, currentLocalMessages: Message[]): Promise<{ panelist: Panelist | null, decision?: ModeratorDecision }> => {
       if (signal?.aborted) return { panelist: null };
       const { settings, mentionStack, roundOrder, alreadySpoken, panelists } = currentState;
@@ -1062,8 +1129,15 @@ export const useChat = () => {
           .filter(p => p.firstName.toLowerCase() !== lastSpeakerName.toLowerCase())
           .map(p => p.firstName);
 
-        // Include user if it's not the first turn after intros AND they didn't just speak
-        if (!isFirstTurnAfterIntros && lastSpeakerName.toLowerCase() !== userName.toLowerCase()) {
+        // Include user if:
+        // 1. It's not the first turn after intros
+        // 2. They didn't just speak
+        // 3. They didn't just skip their turn (excludeUserOnFirstTurn)
+        const shouldExcludeUser = isFirstTurnAfterIntros || 
+                                lastSpeakerName.toLowerCase() === userName.toLowerCase() || 
+                                (isFirstIteration && excludeUserOnFirstTurn);
+
+        if (!shouldExcludeUser) {
           filteredParticipantList.push(userName);
         }
         
@@ -1075,83 +1149,93 @@ export const useChat = () => {
 
         const moderatorPrompt = `You are a conversation moderator. ${prompt}\n\nIMPORTANT: Use ONLY the names provided in the participant list as keys in your reasoning object. Return ONLY valid JSON.`;
 
-        const logId = addDebugLog({ 
-          type: 'request', 
-          endpoint: 'Moderator Speaker Selection', 
-          payload: { prompt: moderatorPrompt }, 
-          model: settings.model 
-        });
-
-        try {
-          const res = await fetch('/api/generate-response', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              panelist: { 
-                firstName: 'Moderator', 
-                shortDescription: 'Speaker Selector',
-                fullPersonality: 'Neutral moderator picking the next speaker.',
-                id: 'moderator',
-                communicationStyle: 'neutral',
-                introMessage: '',
-                color: ''
-              },
-              topic: 'Speaker Selection',
-              history: '',
-              userName: userName,
-              prompt: moderatorPrompt,
-              model: settings.model
-            }),
-            signal
-          });
-          const data: any = await res.json();
-          
-          if (signal?.aborted) return { panelist: null };
-
-          const parsedModerator = JSON.parse(data.raw || '{}');
-          const cleanedModerator = {
-            reasoning: getField(parsedModerator, 'reasoning', ['thoughts', 'thinking']),
-            chosen: getField(parsedModerator, 'chosen', ['selected', 'next']),
-          };
-
-          addDebugLog({ 
-            type: 'response', 
-            endpoint: 'Moderator Speaker Selection', 
+        let attempts = 0;
+        while (attempts < 3) {
+          attempts++;
+          const logId = addDebugLog({ 
+            type: 'request', 
+            endpoint: `Moderator Speaker Selection (Attempt ${attempts})`, 
             payload: { prompt: moderatorPrompt }, 
-            response: { ...data, ...cleanedModerator, allowedNames: filteredParticipantList },
             model: settings.model 
-          }, logId);
+          });
 
-          if (cleanedModerator && cleanedModerator.chosen) {
-            const chosenName = String(cleanedModerator.chosen).trim();
-            const found = panelists.find(p => p.firstName.toLowerCase() === chosenName.toLowerCase());
+          try {
+            const res = await fetch('/api/generate-response', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                panelist: { 
+                  firstName: 'Moderator', 
+                  shortDescription: 'Speaker Selector',
+                  fullPersonality: 'Neutral moderator picking the next speaker.',
+                  id: 'moderator',
+                  communicationStyle: 'neutral',
+                  introMessage: '',
+                  color: ''
+                },
+                topic: 'Speaker Selection',
+                history: '',
+                userName: userName,
+                prompt: moderatorPrompt,
+                model: settings.model
+              }),
+              signal
+            });
+            const data: any = await res.json();
             
-            // Rule 2 & 1 Enforcement: Ensure moderator didn't pick someone excluded
-            const isUserSelected = chosenName.toLowerCase() === userName.toLowerCase();
-            const isLastSpeakerSelected = chosenName.toLowerCase() === lastSpeakerName.toLowerCase();
+            if (signal?.aborted) return { panelist: null };
 
-            if (found && !isLastSpeakerSelected) {
-              return { 
-                panelist: found, 
-                decision: { reasoning: cleanedModerator.reasoning || {}, chosen: found.firstName } 
-              };
-            }
+            const parsedModerator = safeJsonParse(data.raw);
+            const cleanedModerator = {
+              reasoning: getField(parsedModerator, 'reasoning', ['thoughts', 'thinking']),
+              chosen: getField(parsedModerator, 'chosen', ['selected', 'next']),
+            };
 
-            // If the moderator chose the user, we return null panelist to stop the loop
-            // BUT only if they are allowed to speak (not Rule 1 or Rule 2)
-            if (isUserSelected && !isFirstTurnAfterIntros && !isLastSpeakerSelected) {
-              return {
-                panelist: null,
-                decision: { reasoning: cleanedModerator.reasoning || {}, chosen: userName }
-              };
+            addDebugLog({ 
+              type: 'response', 
+              endpoint: `Moderator Speaker Selection (Attempt ${attempts})`, 
+              payload: { prompt: moderatorPrompt }, 
+              response: { ...data, ...cleanedModerator, allowedNames: filteredParticipantList },
+              model: settings.model 
+            }, logId);
+
+            if (cleanedModerator && cleanedModerator.chosen) {
+              const chosenName = String(cleanedModerator.chosen).trim();
+              const found = panelists.find(p => p.firstName.toLowerCase() === chosenName.toLowerCase());
+              
+              // Rule 2 & 1 Enforcement: Ensure moderator didn't pick someone excluded
+              const isUserSelected = chosenName.toLowerCase() === userName.toLowerCase();
+              const isLastSpeakerSelected = chosenName.toLowerCase() === lastSpeakerName.toLowerCase();
+
+              // Check if the choice is allowed based on filteredParticipantList
+              const isAllowed = filteredParticipantList.some(name => name.toLowerCase() === chosenName.toLowerCase());
+
+              if (isAllowed) {
+                if (found && !isLastSpeakerSelected) {
+                  return { 
+                    panelist: found, 
+                    decision: { reasoning: cleanedModerator.reasoning || {}, chosen: found.firstName } 
+                  };
+                }
+
+                // If the moderator chose the user, we return null panelist to stop the loop
+                if (isUserSelected && !isFirstTurnAfterIntros && !isLastSpeakerSelected) {
+                  return {
+                    panelist: null,
+                    decision: { reasoning: cleanedModerator.reasoning || {}, chosen: userName }
+                  };
+                }
+              } else {
+                console.warn(`Moderator attempt ${attempts} picked invalid speaker: ${chosenName}. Retrying...`);
+              }
             }
+          } catch (err) {
+            if (signal?.aborted) return { panelist: null };
+            console.error(`Moderator selection attempt ${attempts} failed`, err);
           }
-        } catch (err) {
-          if (signal?.aborted) return { panelist: null };
-          console.error('Moderator selection failed', err);
         }
         
-        // Fallback to mentions if moderator fails or makes an invalid choice
+        // Fallback to mentions if moderator fails or makes an invalid choice after 3 attempts
       }
 
       if (settings.responseMode === 'mentions' || settings.responseMode === 'moderator') {
@@ -1379,6 +1463,7 @@ export const useChat = () => {
           break;
         }
 
+        isFirstIteration = false;
       } catch (error: any) {
         if (signal?.aborted || error.message === 'Aborted') break;
         addDebugLog({ type: 'error', endpoint: 'runDiscussionRound', payload: error.message });
@@ -1435,7 +1520,7 @@ export const useChat = () => {
         
         if (signal?.aborted) return;
 
-        const parsedSuggested = JSON.parse(data.raw || '{}');
+        const parsedSuggested = safeJsonParse(data.raw);
         const cleanedSuggested = {
           userResponse: getField(parsedSuggested, 'userResponse', ['response', 'message', 'publicComment']),
         };
@@ -1511,8 +1596,9 @@ export const useChat = () => {
       await startDiscussion(content, userMessage, signal);
     } else {
       // Clear auto response when user sends a message
-      const updatedMessages = [...state.messages, userMessage];
-      const updatedDisplay = [...state.displayMessages, userMessage];
+      const isSkip = !content.trim();
+      const updatedMessages = isSkip ? state.messages : [...state.messages, userMessage];
+      const updatedDisplay = isSkip ? state.displayMessages : [...state.displayMessages, userMessage];
       const order = [...state.panelists].sort(() => Math.random() - 0.5).map(p => p.id);
       
       const { mentions } = findMentions(content, state.panelists, state.settings.userName);
@@ -1537,29 +1623,13 @@ export const useChat = () => {
         });
       });
       if (signal.aborted) return;
-      await runDiscussionRound(state.topic, state.panelists, updatedMessages, undefined, updatedDisplay, signal);
+      await runDiscussionRound(state.topic, state.panelists, updatedMessages, undefined, updatedDisplay, signal, isSkip);
     }
   };
 
   const clearAutoResponse = useCallback(() => {
     setState(prev => ({ ...prev, autoResponse: null }));
   }, []);
-
-  const getField = (obj: any, baseKey: string, fallbacks: string[] = []) => {
-    if (!obj || typeof obj !== 'object') return '';
-    const keys = [
-      baseKey, 
-      `{{${baseKey}}}`, 
-      `${baseKey} `, 
-      ` {{${baseKey}}} `,
-      ...fallbacks, 
-      ...fallbacks.map(f => `{{${f}}}`)
-    ];
-    for (const k of keys) {
-      if (obj[k] !== undefined) return obj[k];
-    }
-    return '';
-  };
 
   return {
     state,

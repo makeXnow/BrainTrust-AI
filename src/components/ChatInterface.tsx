@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { Message, Panelist } from '@/types';
 import { MessageBubble } from './MessageBubble';
 import { PromptSuggestions } from './PromptSuggestions';
+import { AssemblingBrainTrust } from './AssemblingBrainTrust';
 import { Send, Bot } from 'lucide-react';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
 import { clsx } from 'clsx';
@@ -50,7 +51,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (input.trim() && (!isGenerating || status === 'generating_auto_response')) {
+    
+    // During discussion (not idle), we allow empty input to skip the user's turn
+    const isAllowedToEmptySend = status !== 'idle';
+    const hasContent = !!input.trim();
+    
+    if ((hasContent || isAllowedToEmptySend) && (!isGenerating || status === 'generating_auto_response')) {
       onSendMessage(input.trim());
       setInput('');
       if (textareaRef.current) {
@@ -135,7 +141,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
           {(status === 'generating_panelists' || (status === 'introductions' && displayMessages.length <= 1)) && (
             <div className="flex items-center justify-center py-20 min-h-[400px]">
-              {/* Removed AssemblingBrainTrust as per cleanup request */}
+              <AssemblingBrainTrust />
             </div>
           )}
         </div>
@@ -166,7 +172,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           )}
           <button 
             type="submit" 
-            disabled={!input.trim() || isInputDisabled}
+            disabled={(status === 'idle' && !input.trim()) || isInputDisabled}
             className="btn btn-primary btn-square shadow-md h-12"
           >
             <Send size={20} />

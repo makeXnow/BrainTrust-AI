@@ -24,15 +24,35 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           responseMimeType: 'application/json',
         }
       });
-      const content = result.response.text();
-      
-      let raw = content || '{}';
-      try {
-        // Prettify the JSON if possible
-        raw = JSON.stringify(JSON.parse(raw), null, 2);
-      } catch (e) {
-        // Keep original if not valid JSON
+    const content = result.response.text();
+    
+    const extractFirstJsonObject = (str: string) => {
+      const firstBrace = str.indexOf('{');
+      if (firstBrace === -1) return str;
+      let depth = 0;
+      for (let i = firstBrace; i < str.length; i++) {
+        if (str[i] === '{') depth++;
+        else if (str[i] === '}') {
+          depth--;
+          if (depth === 0) return str.substring(firstBrace, i + 1);
+        }
       }
+      return str.substring(firstBrace);
+    };
+
+    let raw = content || '{}';
+    try {
+      // Prettify the JSON if possible
+      raw = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch (e) {
+      try {
+        // Try to extract the first JSON object if there's trailing junk
+        const extracted = extractFirstJsonObject(raw);
+        raw = JSON.stringify(JSON.parse(extracted), null, 2);
+      } catch (e2) {
+        // Keep original if still not valid JSON
+      }
+    }
 
       return new Response(JSON.stringify({ 
         raw
@@ -62,12 +82,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const content = response.choices[0].message.content;
 
+    const extractFirstJsonObject = (str: string) => {
+      const firstBrace = str.indexOf('{');
+      if (firstBrace === -1) return str;
+      let depth = 0;
+      for (let i = firstBrace; i < str.length; i++) {
+        if (str[i] === '{') depth++;
+        else if (str[i] === '}') {
+          depth--;
+          if (depth === 0) return str.substring(firstBrace, i + 1);
+        }
+      }
+      return str.substring(firstBrace);
+    };
+
     let raw = content || '{}';
     try {
       // Prettify the JSON if possible
       raw = JSON.stringify(JSON.parse(raw), null, 2);
     } catch (e) {
-      // Keep original if not valid JSON
+      try {
+        // Try to extract the first JSON object if there's trailing junk
+        const extracted = extractFirstJsonObject(raw);
+        raw = JSON.stringify(JSON.parse(extracted), null, 2);
+      } catch (e2) {
+        // Keep original if still not valid JSON
+      }
     }
 
     return new Response(JSON.stringify({ 
