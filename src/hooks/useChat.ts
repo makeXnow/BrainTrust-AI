@@ -1310,19 +1310,19 @@ export const useChat = () => {
           });
         });
         if (!isIntro || signal?.aborted) {
-        if (!isIntro) {
-          // Refresh display messages once intros are done so the UI gate 
-          // knows about the last intro message's typing time
-          await new Promise<void>(resolve => {
-            setState(prev => {
-              displayMessages = [...prev.displayMessages];
-              resolve();
-              return prev;
+          if (!isIntro) {
+            // Refresh display messages once intros are done so the UI gate 
+            // knows about the last intro message's typing time
+            await new Promise<void>(resolve => {
+              setState(prev => {
+                displayMessages = [...prev.displayMessages];
+                resolve();
+                return prev;
+              });
             });
-          });
+          }
+          break;
         }
-        break;
-      }
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
