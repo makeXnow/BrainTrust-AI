@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 interface Env {
   OPENAI_API_KEY: string;
+  GOOGLE_GENERATIVE_AI_API_KEY: string;
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -10,17 +11,45 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   });
 
   try {
-    const response = await openai.models.list();
-    const allModels = response.data;
+    // Parallel fetch from OpenAI and Google
+    const [openaiResponse, geminiResponse] = await Promise.allSettled([
+      openai.models.list(),
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${context.env.GOOGLE_GENERATIVE_AI_API_KEY}`)
+        .then(res => res.json() as Promise<{models: any[]}>)
+    ]);
+
+    let allModels: any[] = [];
+    if (openaiResponse.status === 'fulfilled') {
+      allModels = openaiResponse.value.data;
+    }
+
+    let geminiModels: string[] = [];
+    if (geminiResponse.status === 'fulfilled' && geminiResponse.value.models) {
+      geminiModels = geminiResponse.value.models
+        .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => m.name.replace('models/', ''));
+    } else {
+      // Fallback Gemini models if fetch fails
+      geminiModels = [
+        'gemini-2.0-flash-exp',
+        'gemini-1.5-pro',
+        'gemini-1.5-flash',
+        'gemini-1.0-pro'
+      ];
+    }
+
     const models = [
       ...allModels
-      .filter(model => model.id.startsWith('gpt-') || model.id.startsWith('o1-') || model.id.startsWith('o3-'))
-      .map(model => model.id),
-      'gemini-3-pro-preview',
-      'gemini-3-pro-preview-instant'
+        .filter(model => model.id.startsWith('gpt-') || model.id.startsWith('o1-') || model.id.startsWith('o3-'))
+        .map(model => model.id),
+      ...geminiModels
     ].sort((a, b) => {
-        // Put GPT-5 and Gemini models at the top
-        const isLatest = (s: string) => s.includes('gpt-5') || s.includes('gemini-3');
+        // Put GPT-5, latest O-series, and Gemini 2.0+ models at the top
+        const isLatest = (s: string) => 
+          s.includes('gpt-5') || 
+          s.includes('gemini-2') || 
+          s.includes('o1') || 
+          s.includes('o3');
         if (isLatest(a) && !isLatest(b)) return -1;
         if (!isLatest(a) && isLatest(b)) return 1;
         return a.localeCompare(b);
@@ -30,12 +59,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       ...allModels
         .filter(model => model.id.startsWith('dall-e-') || model.id.startsWith('gpt-image-'))
         .map(model => model.id),
-      'imagen-4-standard',
-      'imagen-4-ultra',
-      'imagen-3-fast'
+      'imagen-3.0-generate-001',
+      'imagen-3.0-fast-generate-001',
+      'imagen-2.0-generate-001'
     ].sort((a, b) => {
-        // Put gpt-image and imagen models at the top
-        const isLatest = (s: string) => s.includes('gpt-image') || s.includes('imagen-4');
+        // Put gpt-image and newest imagen models at the top
+        const isLatest = (s: string) => s.includes('gpt-image') || s.includes('imagen-3');
         if (isLatest(a) && !isLatest(b)) return -1;
         if (!isLatest(a) && isLatest(b)) return 1;
         return a.localeCompare(b);

@@ -23,10 +23,10 @@ const ImageModelOption: React.FC<{ id: string; current: string; onSelect: (id: s
   return (
     <div 
       onClick={() => onSelect(id)}
-      className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-base-300 transition-colors ${isSelected ? 'bg-primary/10 text-primary font-bold' : ''}`}
+      className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-base-300 dark:hover:bg-slate-700 transition-colors ${isSelected ? 'bg-primary/10 text-primary font-bold' : 'text-slate-600 dark:text-slate-300'}`}
     >
       <span>{formatModelName(id)}</span>
-      <span className="text-slate-400 text-xs font-mono">{price}</span>
+      <span className="text-slate-400 dark:text-slate-500 text-xs font-mono">{price}</span>
     </div>
   );
 };
@@ -82,19 +82,19 @@ export const ImageTestPage: React.FC = () => {
   const availableModels = models.length > 0 ? models : defaultModels;
 
   return (
-    <div className="min-h-screen bg-slate-100 p-8">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 p-8 transition-colors">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Image Generation Test</h1>
+        <h1 className="text-3xl font-bold mb-6 text-slate-800 dark:text-slate-100">Image Generation Test</h1>
         
-        <div className="bg-white rounded-xl shadow-lg p-6 space-y-4">
+        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg p-6 space-y-4 border border-slate-200 dark:border-slate-800">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Model</label>
             <div className="dropdown w-full">
-              <div tabIndex={0} role="button" className="select select-bordered w-full flex items-center justify-between px-4 font-normal h-[3rem]">
+              <div tabIndex={0} role="button" className="select select-bordered w-full flex items-center justify-between px-4 font-normal h-[3rem] bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100">
                 <span>{formatModelName(selectedModel)}</span>
-                <span className="text-slate-400 text-xs font-mono ml-auto mr-4">{getModelPrice(selectedModel)}</span>
+                <span className="text-slate-400 dark:text-slate-500 text-xs font-mono ml-auto mr-4">{getModelPrice(selectedModel)}</span>
               </div>
-              <ul tabIndex={0} className="dropdown-content z-[100] menu p-0 shadow bg-base-100 rounded-box w-full mt-1 max-h-60 overflow-y-auto block border border-base-300">
+              <ul tabIndex={0} className="dropdown-content z-[100] menu p-0 shadow bg-base-100 dark:bg-slate-800 rounded-box w-full mt-1 max-h-60 overflow-y-auto block border border-base-300 dark:border-slate-700">
                 {availableModels.map(m => (
                   <li key={m}>
                     <ImageModelOption id={m} current={selectedModel} onSelect={(id) => {
@@ -108,11 +108,11 @@ export const ImageTestPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Prompt</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Prompt</label>
             <textarea 
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              className="textarea textarea-bordered w-full h-32"
+              className="textarea textarea-bordered w-full h-32 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100"
               placeholder="Enter your image prompt..."
             />
           </div>
@@ -133,7 +133,7 @@ export const ImageTestPage: React.FC = () => {
 
           {imageUrl && (
             <div className="mt-4">
-              <p className="text-sm text-slate-500 mb-2">Generated Image:</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Generated Image:</p>
               <img 
                 src={imageUrl} 
                 alt="Generated" 
@@ -144,8 +144,8 @@ export const ImageTestPage: React.FC = () => {
 
           {rawResponse && (
             <div className="mt-4">
-              <p className="text-sm text-slate-500 mb-2">Raw Response:</p>
-              <pre className="bg-slate-800 text-green-400 p-4 rounded-lg text-xs overflow-auto max-h-64">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Raw Response:</p>
+              <pre className="bg-slate-800 dark:bg-black text-green-400 p-4 rounded-lg text-xs overflow-auto max-h-64">
                 {rawResponse}
               </pre>
             </div>

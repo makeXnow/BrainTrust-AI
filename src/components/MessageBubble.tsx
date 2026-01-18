@@ -1,102 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Message } from '@/types';
 import { User, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 
-const AutoCroppedImage: React.FC<{ src: string; alt?: string; className?: string; showHoverPreview?: boolean }> = ({ src, alt, className, showHoverPreview = false }) => {
-  const [croppedSrc, setCroppedSrc] = useState<string>(src);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [isHovering, setIsHovering] = useState(false);
-
-  useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = src;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
-
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-
-      try {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-        const threshold = 240;
-
-        for (let y = 0; y < canvas.height; y++) {
-          for (let x = 0; x < canvas.width; x++) {
-            const i = (y * canvas.width + x) * 4;
-            const r = data[i], g = data[i + 1], b = data[i + 2];
-            
-            if (r < threshold || g < threshold || b < threshold) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-          }
-        }
-
-        if (maxX > minX && maxY > minY) {
-          const width = maxX - minX;
-          const height = maxY - minY;
-          if (minX > 5 || minY > 5 || (canvas.width - maxX) > 5 || (canvas.height - maxY) > 5) {
-            const cropCanvas = document.createElement('canvas');
-            cropCanvas.width = width;
-            cropCanvas.height = height;
-            const cropCtx = cropCanvas.getContext('2d');
-            if (cropCtx) {
-              cropCtx.drawImage(img, minX, minY, width, height, 0, 0, width, height);
-              try {
-                setCroppedSrc(cropCanvas.toDataURL());
-              } catch (err) {
-                console.warn("Could not export cropped canvas (tainted?):", err);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Could not autocrop image:", e);
-      }
-    };
-  }, [src]);
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (showHoverPreview) {
-      setMousePos({ x: e.clientX, y: e.y });
-    }
-  };
-
+// Simple image component - cropping is now done at image generation time in useChat.ts
+export const AutoCroppedImage: React.FC<{ 
+  src: string; 
+  alt?: string; 
+  className?: string;
+}> = ({ src, alt, className }) => {
   return (
-    <>
-      <img 
-        src={croppedSrc} 
-        alt={alt} 
-        className={clsx(className, showHoverPreview && "cursor-zoom-in")} 
-        referrerPolicy="no-referrer" 
-        onMouseEnter={() => showHoverPreview && setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-        onMouseMove={handleMouseMove}
-      />
-      {showHoverPreview && isHovering && (
-        <div 
-          className="fixed z-[9999] pointer-events-none animate-in fade-in zoom-in-95 duration-200"
-          style={{ 
-            left: mousePos.x - 280, 
-            top: mousePos.y - 280,
-          }}
-        >
-          <div className="w-64 h-64 rounded-2xl overflow-hidden border-4 border-white shadow-2xl bg-white">
-            <img src={croppedSrc} alt={alt} className="w-full h-full object-cover" />
-          </div>
-        </div>
-      )}
-    </>
+    <img 
+      src={src} 
+      alt={alt} 
+      className={className} 
+      referrerPolicy="no-referrer" 
+    />
   );
 };
 
@@ -104,9 +23,10 @@ interface MessageBubbleProps {
   message: Message;
   namesToBold?: string[];
   onType?: () => void;
+  onAvatarClick?: (panelistId: string) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBold = [], onType }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBold = [], onType, onAvatarClick }) => {
   const isUser = message.role === 'user';
   const isModerator = message.role === 'moderator';
 
@@ -123,31 +43,41 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
     
     if (names.length === 0) return content;
 
-    // Escape special regex characters in names
-    const escapedNames = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const pattern = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi');
-    
-    const parts = content.split(pattern);
-    
-    return parts.map((part, i) => {
-      const isName = names.some(n => n.toLowerCase() === part.toLowerCase());
-      if (isName) {
-        return <strong key={i} className="font-extrabold">{part}</strong>;
-      }
-      return part;
-    });
+    try {
+      // Escape special regex characters in names
+      const escapedNames = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const pattern = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'gi');
+      
+      const parts = content.split(pattern);
+      
+      return parts.map((part, i) => {
+        const isName = names.some(n => n.toLowerCase() === part.toLowerCase());
+        if (isName) {
+          return <strong key={i} className="font-extrabold">{part}</strong>;
+        }
+        return part;
+      });
+    } catch (e) {
+      return content;
+    }
   };
 
-  const isThinkingMessage = message.content.endsWith('is thinking...');
+  const isThinkingMessage = message.isThinking || message.content.endsWith('is thinking...');
 
   // Calculate if this is a "new" message only once when the component mounts
   // or when the message ID changes. This prevents the typewriter from 
   // stopping mid-way if the 2000ms timer expires during typing.
   const [isNewAgentMessage] = useState(() => {
-    return !isUser && !isModerator && !isThinkingMessage && (Date.now() - message.timestamp < 2000);
+    return !isUser && !isModerator && !isThinkingMessage && (Date.now() - message.timestamp < 3000);
   });
 
-  const [displayedContent, setDisplayedContent] = useState(isNewAgentMessage ? '' : message.content);
+  const [displayedContent, setDisplayedContent] = useState(() => {
+    if (isNewAgentMessage) {
+      const tokens = message.content.match(/\S+\s*/g) || [];
+      return tokens.length > 0 ? tokens[0] : '';
+    }
+    return message.content;
+  });
   const [isTyping, setIsTyping] = useState(isNewAgentMessage);
 
   // If the message content or ID changes, we need to handle it.
@@ -206,24 +136,114 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
     const base = match ? match[1] : 'emerald';
     
     const colors: Record<string, { bubble: string; text: string; border: string; avatar: string }> = {
-      red: { bubble: isThinking ? 'bg-red-50/50 opacity-60' : 'bg-red-50', text: 'text-red-900', border: 'border-red-200', avatar: 'bg-red-500' },
-      orange: { bubble: isThinking ? 'bg-orange-50/50 opacity-60' : 'bg-orange-50', text: 'text-orange-900', border: 'border-orange-200', avatar: 'bg-orange-500' },
-      amber: { bubble: isThinking ? 'bg-amber-50/50 opacity-60' : 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200', avatar: 'bg-amber-500' },
-      yellow: { bubble: isThinking ? 'bg-yellow-50/50 opacity-60' : 'bg-yellow-50', text: 'text-yellow-900', border: 'border-yellow-200', avatar: 'bg-yellow-500' },
-      lime: { bubble: isThinking ? 'bg-lime-50/50 opacity-60' : 'bg-lime-50', text: 'text-lime-900', border: 'border-lime-200', avatar: 'bg-lime-500' },
-      green: { bubble: isThinking ? 'bg-green-50/50 opacity-60' : 'bg-green-50', text: 'text-green-900', border: 'border-green-200', avatar: 'bg-green-500' },
-      emerald: { bubble: isThinking ? 'bg-emerald-50/50 opacity-60' : 'bg-emerald-50', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-500' },
-      teal: { bubble: isThinking ? 'bg-teal-50/50 opacity-60' : 'bg-teal-50', text: 'text-teal-900', border: 'border-teal-200', avatar: 'bg-teal-500' },
-      cyan: { bubble: isThinking ? 'bg-cyan-50/50 opacity-60' : 'bg-cyan-50', text: 'text-cyan-900', border: 'border-cyan-200', avatar: 'bg-cyan-500' },
-      sky: { bubble: isThinking ? 'bg-sky-50/50 opacity-60' : 'bg-sky-50', text: 'text-sky-900', border: 'border-sky-200', avatar: 'bg-sky-500' },
-      blue: { bubble: isThinking ? 'bg-blue-50/50 opacity-60' : 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-500' },
-      indigo: { bubble: isThinking ? 'bg-indigo-50/50 opacity-60' : 'bg-indigo-50', text: 'text-indigo-900', border: 'border-indigo-200', avatar: 'bg-indigo-500' },
-      violet: { bubble: isThinking ? 'bg-violet-50/50 opacity-60' : 'bg-violet-50', text: 'text-violet-900', border: 'border-violet-200', avatar: 'bg-violet-500' },
-      purple: { bubble: isThinking ? 'bg-purple-50/50 opacity-60' : 'bg-purple-50', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-500' },
-      fuchsia: { bubble: isThinking ? 'bg-fuchsia-50/50 opacity-60' : 'bg-fuchsia-50', text: 'text-fuchsia-900', border: 'border-fuchsia-200', avatar: 'bg-fuchsia-500' },
-      pink: { bubble: isThinking ? 'bg-pink-50/50 opacity-60' : 'bg-pink-50', text: 'text-pink-900', border: 'border-pink-200', avatar: 'bg-pink-500' },
-      rose: { bubble: isThinking ? 'bg-rose-50/50 opacity-60' : 'bg-rose-50', text: 'text-rose-900', border: 'border-rose-200', avatar: 'bg-rose-500' },
-      slate: { bubble: 'bg-white', text: 'text-slate-800', border: 'border-slate-200', avatar: 'bg-white' },
+      red: { 
+        bubble: isThinking ? 'bg-red-50/50 dark:bg-red-950/20 opacity-60' : 'bg-red-50 dark:bg-red-950/30', 
+        text: 'text-red-900 dark:text-red-200', 
+        border: 'border-red-200 dark:border-red-900/50', 
+        avatar: 'bg-red-500' 
+      },
+      orange: { 
+        bubble: isThinking ? 'bg-orange-50/50 dark:bg-orange-950/20 opacity-60' : 'bg-orange-50 dark:bg-orange-950/30', 
+        text: 'text-orange-900 dark:text-orange-200', 
+        border: 'border-orange-200 dark:border-orange-900/50', 
+        avatar: 'bg-orange-500' 
+      },
+      amber: { 
+        bubble: isThinking ? 'bg-amber-50/50 dark:bg-amber-950/20 opacity-60' : 'bg-amber-50 dark:bg-amber-950/30', 
+        text: 'text-amber-900 dark:text-amber-200', 
+        border: 'border-amber-200 dark:border-amber-900/50', 
+        avatar: 'bg-amber-500' 
+      },
+      yellow: { 
+        bubble: isThinking ? 'bg-yellow-50/50 dark:bg-yellow-950/20 opacity-60' : 'bg-yellow-50 dark:bg-yellow-950/30', 
+        text: 'text-yellow-900 dark:text-yellow-200', 
+        border: 'border-yellow-200 dark:border-yellow-900/50', 
+        avatar: 'bg-yellow-500' 
+      },
+      lime: { 
+        bubble: isThinking ? 'bg-lime-50/50 dark:bg-lime-950/20 opacity-60' : 'bg-lime-50 dark:bg-lime-950/30', 
+        text: 'text-lime-900 dark:text-lime-200', 
+        border: 'border-lime-200 dark:border-lime-900/50', 
+        avatar: 'bg-lime-500' 
+      },
+      green: { 
+        bubble: isThinking ? 'bg-green-50/50 dark:bg-green-950/20 opacity-60' : 'bg-green-50 dark:bg-green-950/30', 
+        text: 'text-green-900 dark:text-green-200', 
+        border: 'border-green-200 dark:border-green-900/50', 
+        avatar: 'bg-green-500' 
+      },
+      emerald: { 
+        bubble: isThinking ? 'bg-emerald-50/50 dark:bg-emerald-950/20 opacity-60' : 'bg-emerald-50 dark:bg-emerald-950/30', 
+        text: 'text-emerald-900 dark:text-emerald-200', 
+        border: 'border-emerald-200 dark:border-emerald-900/50', 
+        avatar: 'bg-emerald-500' 
+      },
+      teal: { 
+        bubble: isThinking ? 'bg-teal-50/50 dark:bg-teal-950/20 opacity-60' : 'bg-teal-50 dark:bg-teal-950/30', 
+        text: 'text-teal-900 dark:text-teal-200', 
+        border: 'border-teal-200 dark:border-teal-900/50', 
+        avatar: 'bg-teal-500' 
+      },
+      cyan: { 
+        bubble: isThinking ? 'bg-cyan-50/50 dark:bg-cyan-950/20 opacity-60' : 'bg-cyan-50 dark:bg-cyan-950/30', 
+        text: 'text-cyan-900 dark:text-cyan-200', 
+        border: 'border-cyan-200 dark:border-cyan-900/50', 
+        avatar: 'bg-cyan-500' 
+      },
+      sky: { 
+        bubble: isThinking ? 'bg-sky-50/50 dark:bg-sky-950/20 opacity-60' : 'bg-sky-50 dark:bg-sky-950/30', 
+        text: 'text-sky-900 dark:text-sky-200', 
+        border: 'border-sky-200 dark:border-sky-900/50', 
+        avatar: 'bg-sky-500' 
+      },
+      blue: { 
+        bubble: isThinking ? 'bg-blue-50/50 dark:bg-blue-950/20 opacity-60' : 'bg-blue-50 dark:bg-blue-950/30', 
+        text: 'text-blue-900 dark:text-blue-200', 
+        border: 'border-blue-200 dark:border-blue-900/50', 
+        avatar: 'bg-blue-500' 
+      },
+      indigo: { 
+        bubble: isThinking ? 'bg-indigo-50/50 dark:bg-indigo-950/20 opacity-60' : 'bg-indigo-50 dark:bg-indigo-950/30', 
+        text: 'text-indigo-900 dark:text-indigo-200', 
+        border: 'border-indigo-200 dark:border-indigo-900/50', 
+        avatar: 'bg-indigo-500' 
+      },
+      violet: { 
+        bubble: isThinking ? 'bg-violet-50/50 dark:bg-violet-950/20 opacity-60' : 'bg-violet-50 dark:bg-violet-950/30', 
+        text: 'text-violet-900 dark:text-violet-200', 
+        border: 'border-violet-200 dark:border-violet-900/50', 
+        avatar: 'bg-violet-500' 
+      },
+      purple: { 
+        bubble: isThinking ? 'bg-purple-50/50 dark:bg-purple-950/20 opacity-60' : 'bg-purple-50 dark:bg-purple-950/30', 
+        text: 'text-purple-900 dark:text-purple-200', 
+        border: 'border-purple-200 dark:border-purple-900/50', 
+        avatar: 'bg-purple-500' 
+      },
+      fuchsia: { 
+        bubble: isThinking ? 'bg-fuchsia-50/50 dark:bg-fuchsia-950/20 opacity-60' : 'bg-fuchsia-50 dark:bg-fuchsia-950/30', 
+        text: 'text-fuchsia-900 dark:text-fuchsia-200', 
+        border: 'border-fuchsia-200 dark:border-fuchsia-900/50', 
+        avatar: 'bg-fuchsia-500' 
+      },
+      pink: { 
+        bubble: isThinking ? 'bg-pink-50/50 dark:bg-pink-950/20 opacity-60' : 'bg-pink-50 dark:bg-pink-950/30', 
+        text: 'text-pink-900 dark:text-pink-200', 
+        border: 'border-pink-200 dark:border-pink-900/50', 
+        avatar: 'bg-pink-500' 
+      },
+      rose: { 
+        bubble: isThinking ? 'bg-rose-50/50 dark:bg-rose-950/20 opacity-60' : 'bg-rose-50 dark:bg-rose-950/30', 
+        text: 'text-rose-900 dark:text-rose-200', 
+        border: 'border-rose-200 dark:border-rose-900/50', 
+        avatar: 'bg-rose-500' 
+      },
+      slate: { 
+        bubble: 'bg-white dark:bg-slate-900', 
+        text: 'text-slate-800 dark:text-slate-100', 
+        border: 'border-slate-200 dark:border-slate-800', 
+        avatar: 'bg-white dark:bg-slate-800' 
+      },
     };
 
     return colors[base] || colors.emerald;
@@ -236,7 +256,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
     isUser 
       ? `${colorTheme.bubble} ${colorTheme.text} ${colorTheme.border} rounded-br-none` 
       : `${colorTheme.bubble} ${colorTheme.text} ${colorTheme.border} rounded-bl-none`,
-    isThinkingMessage && 'italic text-slate-400 border-dashed'
+    isThinkingMessage && 'italic text-slate-400 dark:text-slate-500 border-dashed'
   );
 
   return (
@@ -245,18 +265,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
       isUser ? 'flex-row-reverse ml-auto' : 'flex-row mr-auto'
     )}>
       {/* Avatar */}
-      <div className={clsx(
-        'w-16 h-16 rounded-full flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden border transition-all duration-300',
-        isUser ? 'bg-white border-slate-200' : 'bg-base-300 border-transparent'
-      )}>
+      <div 
+        className={clsx(
+          'w-16 h-16 rounded-full flex items-center justify-center shadow-md flex-shrink-0 overflow-hidden border transition-all duration-300',
+          isUser ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' : 'bg-base-300 dark:bg-slate-800 border-transparent',
+          !isUser && message.panelistId && 'cursor-pointer hover:border-primary/50'
+        )}
+        onClick={() => !isUser && message.panelistId && onAvatarClick?.(message.panelistId)}
+      >
         {isUser ? (
-          <User size={32} className="text-slate-400" />
+          <User size={32} className="text-slate-400 dark:text-slate-500" />
         ) : message.avatarUrl ? (
           <AutoCroppedImage 
             src={message.avatarUrl} 
             alt={message.senderName} 
             className="w-full h-full object-cover" 
-            showHoverPreview={true}
           />
         ) : (
           <div className={clsx('w-full h-full flex items-center justify-center text-white font-bold text-xl', colorTheme.avatar)}>
@@ -267,21 +290,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, namesToBo
 
       {/* Message Content */}
       <div className={clsx('flex flex-col max-w-[80%]', isUser ? 'items-end' : 'items-start')}>
-        <div className="flex items-center gap-2 mb-1.5 px-0.5">
+        <div className="flex items-center gap-2 mb-1.5 px-0.5 flex-wrap">
           {!isUser && (
             <>
-              <span className="font-bold text-sm text-slate-700 whitespace-nowrap">
+              <span className="font-bold text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">
                 {message.senderName || (isModerator ? 'Moderator' : 'Agent')}
               </span>
               {message.senderTitle && (
-                <span className="text-[11px] text-slate-400 font-normal italic truncate">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal italic truncate">
                   {message.senderTitle}
                 </span>
               )}
             </>
           )}
           {isUser && message.senderName && (
-            <span className="font-bold text-sm text-slate-700 whitespace-nowrap">
+            <span className="font-bold text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">
               {message.senderName}
             </span>
           )}

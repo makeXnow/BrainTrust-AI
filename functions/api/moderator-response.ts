@@ -27,11 +27,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       });
       const content = result.response.text();
-      const data = JSON.parse(content || '{}');
       
+      let raw = content || '{}';
+      try {
+        // Prettify the JSON if possible
+        raw = JSON.stringify(JSON.parse(raw), null, 2);
+      } catch (e) {
+        // Keep original if not valid JSON
+      }
+
       return new Response(JSON.stringify({ 
-        summary: data.summary || data.response || data.message || "The moderator has no further notes.",
-        raw: content 
+        raw
       }), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -57,11 +63,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     });
 
     const content = response.choices[0].message.content;
-    const data = JSON.parse(content || '{}');
+
+    let raw = content || '{}';
+    try {
+      // Prettify the JSON if possible
+      raw = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch (e) {
+      // Keep original if not valid JSON
+    }
 
     return new Response(JSON.stringify({ 
-      summary: data.summary || data.response || data.message || "The moderator has no further notes.",
-      raw: content 
+      raw
     }), {
       headers: { 'Content-Type': 'application/json' },
     });

@@ -7,10 +7,19 @@ interface Env {
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-  const { panelist, history, topic, prompt, model, userName } = await context.request.json() as any;
+  const { topic, firstName, shortDescription, color, communicationStyle, communicationStyleDescription, wordMin, wordMax, styleIntro, prompt, model } = await context.request.json() as any;
 
-  // Prompt is now pre-filled by the frontend for consistency and accurate debug logging.
-  const systemPrompt = prompt;
+  const systemPrompt = prompt
+    .replace(/\{\{topic\}\}/g, () => topic)
+    .replace(/\{\{firstName\}\}/g, () => firstName)
+    .replace(/\{\{description\}\}/g, () => shortDescription)
+    .replace(/\{\{shortDescription\}\}/g, () => shortDescription)
+    .replace(/\{\{communicationStyle\}\}/g, () => communicationStyle || 'Professional')
+    .replace(/\{\{communicationStyleDescription\}\}/g, () => communicationStyleDescription || '')
+    .replace(/\{\{wordMin\}\}/g, () => String(wordMin || 10))
+    .replace(/\{\{wordMax\}\}/g, () => String(wordMax || 50))
+    .replace(/\{\{styleIntro\}\}/g, () => styleIntro || '{{firstName}} here.')
+    .replace(/\{\{color\}\}/g, () => color || 'professional');
 
   // Handle Gemini models
   if (model && model.startsWith('gemini-')) {
@@ -55,7 +64,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const response = await openai.chat.completions.create({
       model: model || 'gpt-4o',
       messages: [
-        { role: 'system', content: systemPrompt }
+        { role: 'system', content: 'You are a creative character designer. You always respond with a JSON object.' },
+        { role: 'user', content: systemPrompt }
       ],
       response_format: { type: 'json_object' },
     });

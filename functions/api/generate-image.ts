@@ -19,12 +19,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       
       // Map friendly model names to actual API model names (from ListModels API)
       const modelMapping: Record<string, string> = {
-        'imagen-4-standard': 'imagen-4.0-generate-001',
-        'imagen-4-ultra': 'imagen-4.0-ultra-generate-001',
-        'imagen-3-fast': 'imagen-4.0-fast-generate-001',
+        'imagen-4-standard': 'imagen-3.0-generate-001',
+        'imagen-4-ultra': 'imagen-3.0-generate-001',
+        'imagen-3-fast': 'imagen-3.0-fast-generate-001',
+        'imagen-3.0-generate-001': 'imagen-3.0-generate-001',
+        'imagen-3.0-fast-generate-001': 'imagen-3.0-fast-generate-001',
+        'imagen-2.0-generate-001': 'imagen-2.0-generate-001',
       };
       
-      const apiModel = modelMapping[model] || 'imagen-4.0-generate-001';
+      const apiModel = modelMapping[model] || model;
       
       // Use direct REST API call to Imagen endpoint
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:predict?key=${apiKey}`;
@@ -77,6 +80,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       prompt: prompt,
       n: 1,
       size: (model === 'dall-e-2') ? '256x256' : '1024x1024',
+      response_format: 'b64_json', // Get base64 to avoid CORS issues with frame cropping
     };
 
     if (model && (model.startsWith('gpt-image') || model.startsWith('dall-e-3'))) {
@@ -85,8 +89,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const response = await openai.images.generate(params);
-    const url = response.data?.[0]?.url;
-    if (!url) throw new Error('No image URL returned');
+    const b64 = response.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image data returned');
+
+    // Return as data URL so frontend can process without CORS issues
+    const url = `data:image/png;base64,${b64}`;
 
     return new Response(JSON.stringify({ 
       url
