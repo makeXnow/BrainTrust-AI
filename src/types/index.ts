@@ -92,6 +92,7 @@ export interface ChatState {
   settings: Settings;
   autoResponse: string | null; // User auto response ready to be loaded into input
   mentionStack: string[];
+  error: string | null;
   roundOrder: string[];
   alreadySpoken: string[];
   consecutiveAgentCount: number;

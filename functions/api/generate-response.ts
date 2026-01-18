@@ -9,11 +9,14 @@ interface Env {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { panelist, history, topic, prompt, model, userName } = await context.request.json() as any;
 
-  // Prompt is now pre-filled by the frontend for consistency and accurate debug logging.
-  const systemPrompt = prompt;
-
   // Handle Gemini models
   if (model && model.startsWith('gemini-')) {
+    if (!context.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'GOOGLE_GENERATIVE_AI_API_KEY is missing. Please add it to your Cloudflare Pages environment variables.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     try {
       const genAI = new GoogleGenerativeAI(context.env.GOOGLE_GENERATIVE_AI_API_KEY);
       const gemini = genAI.getGenerativeModel({ model: model });
@@ -67,11 +70,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
+  if (!context.env.OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY is missing. Please add it to your Cloudflare Pages environment variables.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const openai = new OpenAI({
     apiKey: context.env.OPENAI_API_KEY,
   });
 
   try {
+    const systemPrompt = prompt;
     const response = await openai.chat.completions.create({
       model: model || 'gpt-4o',
       messages: [

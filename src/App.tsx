@@ -26,6 +26,7 @@ function App() {
     toggleDebug,
     updateSettings,
     clearAutoResponse,
+    clearError,
   } = useChat();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -106,6 +107,23 @@ function App() {
             onClearAutoResponse={clearAutoResponse}
             onAvatarClick={(id) => setSelectedPanelistId(id)}
           />
+
+          {state.error && (
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-bottom-4 duration-300">
+              <div className="alert alert-error shadow-lg rounded-2xl py-3 px-6 flex items-center gap-3">
+                <div className="p-1 bg-red-100 dark:bg-red-900/30 rounded-full text-red-600 dark:text-red-400">
+                  <X size={16} />
+                </div>
+                <span className="text-sm font-medium">{state.error}</span>
+                <button 
+                  onClick={clearError}
+                  className="btn btn-ghost btn-xs btn-circle"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {state.showDebug && (

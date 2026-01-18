@@ -220,6 +220,7 @@ export const useChat = () => {
       showDebug: false,
       settings,
       autoResponse: null,
+      error: null,
       mentionStack: [],
       roundOrder: [],
       alreadySpoken: [],
@@ -261,10 +262,17 @@ export const useChat = () => {
 
   useEffect(() => {
     fetch('/api/models')
-      .then(res => res.json())
-      .then((data: any) => {
-        if (data.models) setAvailableModels(data.models);
-        if (data.imageModels) setAvailableImageModels(data.imageModels);
+      .then(async res => {
+        const data = await res.json();
+        if (res.ok) {
+          if (data.models) setAvailableModels(data.models);
+          if (data.imageModels) setAvailableImageModels(data.imageModels);
+        } else if (res.status === 500) {
+          setState(prev => ({ 
+            ...prev, 
+            error: 'Backend API error. Please check your Cloudflare environment variables (OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY).' 
+          }));
+        }
       })
       .catch(console.error);
   }, []);
@@ -759,7 +767,12 @@ export const useChat = () => {
         body: JSON.stringify(quickPayload),
         signal
       });
+      
       const quickData: any = await quickRes.json();
+      
+      if (!quickRes.ok) {
+        throw new Error(quickData.error || `Failed to generate panelists: ${quickRes.statusText}`);
+      }
       
       if (signal.aborted) return;
 
@@ -1068,8 +1081,9 @@ export const useChat = () => {
 
     } catch (error: any) {
       if (signal.aborted || error.message === 'Aborted') return;
+      console.error('Error in startDiscussion:', error);
       addDebugLog({ type: 'error', endpoint: 'startDiscussion', payload: error.message });
-      setState(prev => ({ ...prev, isGenerating: false, status: 'idle' }));
+      setState(prev => ({ ...prev, isGenerating: false, status: 'idle', error: error.message }));
     }
   };
 
@@ -1585,6 +1599,7 @@ export const useChat = () => {
             ...prev, 
             messages: [userMessage], 
             displayMessages: [userMessage],
+            error: null,
             roundOrder: order,
             alreadySpoken: [],
             mentionStack: newMentionStack,
@@ -1615,6 +1630,7 @@ export const useChat = () => {
             messages: updatedMessages, 
             displayMessages: updatedDisplay, 
             autoResponse: null,
+            error: null,
             roundOrder: order,
             alreadySpoken: [],
             mentionStack: newMentionStack,
@@ -1631,6 +1647,10 @@ export const useChat = () => {
     setState(prev => ({ ...prev, autoResponse: null }));
   }, []);
 
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: null }));
+  }, []);
+
   return {
     state,
     availableModels,
@@ -1641,5 +1661,6 @@ export const useChat = () => {
     toggleDebug,
     updateSettings,
     clearAutoResponse,
+    clearError,
   };
 };

@@ -6,6 +6,13 @@ interface Env {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
+  if (!context.env.OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY is missing. Please add it to your Cloudflare Pages environment variables.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const openai = new OpenAI({
     apiKey: context.env.OPENAI_API_KEY,
   });

@@ -9,17 +9,22 @@ interface Env {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { topic, count, prompt, model, communicationStyles } = await context.request.json() as any;
 
-  const systemPrompt = prompt
-    .replace(/\{\{topic\}\}/g, () => topic)
-    .replace(/\{\{count\}\}/g, () => count)
-    .replace(/\{\{communicationStyles\}\}/g, () => communicationStyles || 'Any professional style');
-
-  // Handle Gemini models
   if (model && model.startsWith('gemini-')) {
+    if (!context.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'GOOGLE_GENERATIVE_AI_API_KEY is missing. Please add it to your Cloudflare Pages environment variables.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     try {
       const genAI = new GoogleGenerativeAI(context.env.GOOGLE_GENERATIVE_AI_API_KEY);
       const gemini = genAI.getGenerativeModel({ model: model });
       
+      const systemPrompt = prompt
+        .replace(/\{\{topic\}\}/g, () => topic)
+        .replace(/\{\{count\}\}/g, () => count)
+        .replace(/\{\{communicationStyles\}\}/g, () => communicationStyles || 'Any professional style');
+
       const result = await gemini.generateContent({
         contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
         generationConfig: {
@@ -66,11 +71,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
+  if (!context.env.OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY is missing. Please add it to your Cloudflare Pages environment variables.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const openai = new OpenAI({
     apiKey: context.env.OPENAI_API_KEY,
   });
 
   try {
+    const systemPrompt = prompt
+      .replace(/\{\{topic\}\}/g, () => topic)
+      .replace(/\{\{count\}\}/g, () => count)
+      .replace(/\{\{communicationStyles\}\}/g, () => communicationStyles || 'Any professional style');
+
     const response = await openai.chat.completions.create({
       model: model || 'gpt-4o',
       messages: [
