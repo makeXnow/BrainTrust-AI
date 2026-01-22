@@ -9,7 +9,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "pages:dev": "wrangler pages dev --compatibility-date=2024-01-01 --port 2222 -- vite --port 2223",
-    "pages:deploy": "npm run build && wrangler pages deploy dist --project-name braintrustai"
+    "pages:deploy": "npm run build && wrangler pages deploy dist --project-name mxn-braintrust-ai"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
