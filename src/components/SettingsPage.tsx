@@ -1,10 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Settings } from '@/types';
 import { AgentCountSelector } from './AgentCountSelector';
+import { clsx } from 'clsx';
 import { 
   X, Lock, LogOut, Settings as SettingsIcon, Plus, Trash2, 
   User, ShieldCheck, Sparkles, MessagesSquare, MessageCircleDashed, Speech, BookOpenText,
-  NotebookText, ChevronDown, ChevronRight
+  NotebookText, ChevronDown, ChevronRight, RotateCcw, Cloud
 } from 'lucide-react';
 import { BASE_RESPONSE_PROMPT, BASE_MODERATOR_PROMPT, BASE_IMAGE_PROMPT, BASE_QUICK_PANELISTS_PROMPT, BASE_PANELIST_DETAILS_PROMPT } from '@/lib/prompts';
 import { PromptEditor } from './PromptEditor';
@@ -14,7 +15,9 @@ import { PROMPT_METADATA } from '@/lib/variableMetadata';
 interface SettingsPageProps {
   settings: Settings;
   onUpdate: (settings: Partial<Settings>) => void;
+  onSaveToCloud?: () => Promise<boolean>;
   onClose: () => void;
+  onReset?: () => void;
   availableModels: string[];
   availableImageModels: string[];
   isAdmin: boolean;
@@ -57,7 +60,9 @@ const AutoResizingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaEl
 export const SettingsPage: React.FC<SettingsPageProps> = ({ 
   settings, 
   onUpdate, 
+  onSaveToCloud,
   onClose, 
+  onReset,
   availableModels, 
   availableImageModels,
   isAdmin,
@@ -69,6 +74,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleSaveToCloud = async () => {
+    if (!onSaveToCloud) return;
+    setIsSaving(true);
+    setSaveStatus('idle');
+    const success = await onSaveToCloud();
+    setSaveStatus(success ? 'success' : 'error');
+    if (success) {
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
+    setIsSaving(false);
+  };
 
   // Map incoming tab names from header to our internal sidebar names
   const tabMap: Record<string, string> = {
@@ -169,25 +188,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 dark:bg-slate-950 animate-in fade-in slide-in-from-right duration-300 transition-colors">
-      <header className="navbar bg-base-100 dark:bg-slate-900 border-b border-base-300 dark:border-slate-800 px-6 shrink-0 h-16">
-        <div className="flex-1 flex items-center gap-4">
-          <h1 className="text-xl font-bold flex items-center gap-2 text-primary">
-            <SettingsIcon size={24} />
-            Settings
-          </h1>
-        </div>
-        <div className="flex-none">
-          <button 
-            onClick={onClose}
-            className="btn btn-primary btn-sm px-6 rounded-xl shadow-md shadow-primary/20"
-          >
-            Save & Exit
-          </button>
-        </div>
-      </header>
-      
-      <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col w-full h-full min-w-0 bg-slate-50 dark:bg-slate-950 animate-in fade-in duration-300 transition-colors overflow-hidden">
+      <div className="flex-1 flex overflow-hidden h-full">
         {/* Sidebar */}
         <div className="w-64 shrink-0 bg-base-100 dark:bg-slate-900 border-r border-base-300 dark:border-slate-800 flex flex-col">
           <nav className="flex-1 p-4 space-y-1">
@@ -703,6 +705,41 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       placeholder="Template for generating panelist avatars..."
                       onFocus={() => setFocusedField('imagePrompt')}
                     />
+                  </div>
+
+                  <div className="pt-8 space-y-4">
+                    <button 
+                      onClick={handleSaveToCloud}
+                      disabled={isSaving}
+                      className={clsx(
+                        "btn w-full gap-2",
+                        saveStatus === 'success' ? "btn-success" : 
+                        saveStatus === 'error' ? "btn-error" : 
+                        "btn-primary"
+                      )}
+                    >
+                      <Cloud size={18} className={isSaving ? "animate-bounce" : ""} />
+                      {isSaving ? "Saving to Cloudflare..." : 
+                       saveStatus === 'success' ? "Saved to Cloudflare!" :
+                       saveStatus === 'error' ? "Save Failed" : 
+                       "Save Changes to Cloudflare"}
+                    </button>
+                    <p className="text-xs text-center opacity-50 dark:text-slate-400 px-4">
+                      This will make these settings the default for all future sessions and deployments.
+                    </p>
+                  </div>
+
+                  <div className="pt-8 border-t border-base-200 dark:border-slate-800">
+                    <button 
+                      onClick={onReset}
+                      className="btn btn-outline btn-error w-full gap-2"
+                    >
+                      <RotateCcw size={18} />
+                      Reset to Default Settings
+                    </button>
+                    <p className="text-xs text-center mt-4 opacity-50 dark:text-slate-400 px-4">
+                      Warning: This will clear all custom prompts and communication styles, reverting them to their original versions.
+                    </p>
                   </div>
                 </section>
               </div>

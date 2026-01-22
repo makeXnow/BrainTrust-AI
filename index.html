@@ -8,6 +8,21 @@
   </head>
   <body>
     <div id="root"></div>
+    <div id="error-fallback" style="display:none; padding: 20px; font-family: sans-serif; color: #ef4444; background: #fee2e2; border: 1px solid #f87171; border-radius: 8px; margin: 20px;">
+      <h2 style="margin-top: 0">Something went wrong</h2>
+      <p>The application failed to start. Please try refreshing the page or clearing your browser cache.</p>
+      <pre id="error-message" style="white-space: pre-wrap; font-size: 12px; margin-bottom: 0"></pre>
+    </div>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        document.getElementById('error-fallback').style.display = 'block';
+        document.getElementById('error-message').textContent = message + '\nAt: ' + source + ':' + lineno + ':' + colno;
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        document.getElementById('error-fallback').style.display = 'block';
+        document.getElementById('error-message').textContent = 'Unhandled Promise Rejection: ' + event.reason;
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

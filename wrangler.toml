@@ -5,3 +5,7 @@ pages_build_output_dir = "dist"
 [vars]
 # Add non-secret variables here
 # OPENAI_API_KEY should be set as a secret
+
+[[kv_namespaces]]
+binding = "BRAINTRUST_KV"
+id = "5c1ebd9955e14a9eb3dcfaea986bed40"

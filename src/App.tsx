@@ -1,21 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { useChat } from './hooks/useChat';
 import { Header } from './components/Header';
 import { ChatInterface } from './components/ChatInterface';
 import { DebugPanel } from './components/DebugPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SettingsPage } from './components/SettingsPage';
-import { ImageTestPage } from './components/ImageTestPage';
+import { SettingsModal } from './components/SettingsModal';
 import { AutoCroppedImage } from './components/MessageBubble';
 import { Panelist } from './types';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 
 function App() {
-  // Simple hash-based routing for test page
-  if (window.location.hash === '#imagetest') {
-    return <ImageTestPage />;
-  }
+  const navigate = useNavigate();
+  const location = useLocation();
   const {
     state,
     availableModels,
@@ -27,13 +26,37 @@ function App() {
     updateSettings,
     clearAutoResponse,
     clearError,
+    saveSettingsToCloud,
   } = useChat();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'behavior' | 'panelists' | 'prompts'>('general');
   const [isAdmin, setIsAdmin] = useState(() => {
-    return document.cookie.split('; ').some(row => row.startsWith('isAdmin=true'));
+    try {
+      return document.cookie.split('; ').some(row => row.startsWith('isAdmin=true'));
+    } catch (e) {
+      return false;
+    }
   });
+
+  const handleAdminLogin = (password: string) => {
+    if (password === 'okok') {
+      setIsAdmin(true);
+      setIsSettingsOpen(false);
+      document.cookie = "isAdmin=true; path=/; max-age=31536000; SameSite=Strict";
+      navigate('/settings');
+      return true;
+    }
+    return false;
+  };
+
+  const handleResetSettings = () => {
+    if (window.confirm('This will reset all prompts and settings to their default values. Your conversation history will also be cleared. Continue?')) {
+      localStorage.removeItem('braintrust_settings');
+      window.location.reload();
+    }
+  };
+
   const [selectedPanelistId, setSelectedPanelistId] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
   const [isWide, setIsWide] = useState(window.innerWidth >= 900);
@@ -75,71 +98,102 @@ function App() {
 
   const showNamePrompt = state.settings && !state.settings.userName && state.messages.length === 0;
 
+  // Header should be visible on both routes
+  const mainHeader = (
+    <Header 
+      onReset={resetChat} 
+      onToggleDebug={toggleDebug} 
+      onOpenSettings={(tab) => {
+        if (tab) setActiveTab(tab as any);
+        setIsSettingsOpen(true);
+      }}
+      showDebug={state.showDebug}
+      isAdmin={isAdmin}
+    />
+  );
+
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
-      <Header 
-        onReset={resetChat} 
-        onToggleDebug={toggleDebug} 
-        onOpenSettings={(tab) => {
-          if (tab) setActiveTab(tab as any);
-          setIsSettingsOpen(true);
-        }}
-        showDebug={state.showDebug}
-      />
+      {mainHeader}
 
       <main className="flex-1 flex overflow-hidden relative">
-        <div className={clsx(
-          "transition-all duration-300 ease-in-out flex-1 flex flex-col min-w-0",
-          state.showDebug ? (isWide ? "w-1/2" : "hidden") : "w-full"
-        )}>
-          <ChatInterface 
-            messages={state.displayMessages}
-            panelists={state.panelists}
-            isGenerating={state.isGenerating}
-            status={state.status}
-            topic={state.topic}
-            suggestions={suggestions}
-            autoResponse={state.autoResponse}
-            userName={state.settings.userName}
-            enableSuggestedResponse={state.settings.enableSuggestedResponse}
-            onSendMessage={sendMessage}
-            onSelectSuggestion={sendMessage}
-            onClearAutoResponse={clearAutoResponse}
-            onAvatarClick={(id) => setSelectedPanelistId(id)}
-          />
+        <Routes>
+          <Route path="/" element={
+            <div className="flex-1 flex overflow-hidden">
+              <div className={clsx(
+                "transition-all duration-300 ease-in-out flex-1 flex flex-col min-w-0",
+                state.showDebug ? (isWide ? "w-1/2" : "hidden") : "w-full"
+              )}>
+                <ChatInterface 
+                  messages={state.displayMessages}
+                  panelists={state.panelists}
+                  isGenerating={state.isGenerating}
+                  status={state.status}
+                  topic={state.topic}
+                  suggestions={suggestions}
+                  autoResponse={state.autoResponse}
+                  userName={state.settings.userName}
+                  enableSuggestedResponse={state.settings.enableSuggestedResponse}
+                  onSendMessage={sendMessage}
+                  onSelectSuggestion={sendMessage}
+                  onClearAutoResponse={clearAutoResponse}
+                  onAvatarClick={(id) => setSelectedPanelistId(id)}
+                />
 
-          {state.error && (
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-bottom-4 duration-300">
-              <div className="alert alert-error shadow-lg rounded-2xl py-3 px-6 flex items-center gap-3">
-                <div className="p-1 bg-red-100 dark:bg-red-900/30 rounded-full text-red-600 dark:text-red-400">
-                  <X size={16} />
-                </div>
-                <span className="text-sm font-medium">{state.error}</span>
-                <button 
-                  onClick={clearError}
-                  className="btn btn-ghost btn-xs btn-circle"
-                >
-                  <X size={14} />
-                </button>
+                {state.error && (
+                  <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-bottom-4 duration-300">
+                    <div className="alert alert-error shadow-lg rounded-2xl py-3 px-6 flex items-center gap-3">
+                      <div className="p-1 bg-red-100 dark:bg-red-900/30 rounded-full text-red-600 dark:text-red-400">
+                        <X size={16} />
+                      </div>
+                      <span className="text-sm font-medium">{state.error}</span>
+                      <button 
+                        onClick={clearError}
+                        className="btn btn-ghost btn-xs btn-circle"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
-        </div>
 
-        {state.showDebug && (
-          <div className={clsx(
-            "border-l border-base-300 shadow-2xl z-10 animate-in slide-in-from-right duration-300",
-            isWide ? "w-1/2" : "w-full"
-          )}>
-            <ErrorBoundary name="Agent Console">
-              <DebugPanel 
-                logs={state.debugLogs} 
-                panelists={state.panelists}
-                onPanelistClick={(p) => setSelectedPanelistId(p.id)}
+              {state.showDebug && (
+                <div className={clsx(
+                  "border-l border-base-300 shadow-2xl z-10 animate-in slide-in-from-right duration-300",
+                  isWide ? "w-1/2" : "w-full"
+                )}>
+                  <ErrorBoundary name="Agent Console">
+                    <DebugPanel 
+                      logs={state.debugLogs} 
+                      panelists={state.panelists}
+                      onPanelistClick={(p) => setSelectedPanelistId(p.id)}
+                    />
+                  </ErrorBoundary>
+                </div>
+              )}
+            </div>
+          } />
+          
+          <Route path="/settings" element={
+            isAdmin ? (
+              <SettingsPage 
+                settings={state.settings}
+                onUpdate={updateSettings}
+                onSaveToCloud={() => saveSettingsToCloud(state.settings)}
+                onClose={() => navigate('/')}
+                onReset={handleResetSettings}
+                availableModels={availableModels}
+                availableImageModels={availableImageModels}
+                isAdmin={isAdmin}
+                setIsAdmin={setIsAdmin}
+                initialTab={activeTab}
               />
-            </ErrorBoundary>
-          </div>
-        )}
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } />
+        </Routes>
       </main>
 
       {/* Name Prompt Modal */}
@@ -172,16 +226,12 @@ function App() {
         </div>
       )}
 
-      {isSettingsOpen && (
-        <SettingsPage 
+      {isSettingsOpen && !isAdmin && (
+        <SettingsModal 
           settings={state.settings}
           onUpdate={updateSettings}
           onClose={() => setIsSettingsOpen(false)}
-          availableModels={availableModels}
-          availableImageModels={availableImageModels}
-          isAdmin={isAdmin}
-          setIsAdmin={setIsAdmin}
-          initialTab={activeTab}
+          onAdminLogin={handleAdminLogin}
         />
       )}
 

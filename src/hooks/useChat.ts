@@ -261,20 +261,26 @@ export const useChat = () => {
   }, [state.settings]);
 
   useEffect(() => {
-    fetch('/api/models')
+    fetch(`${import.meta.env.BASE_URL}api/models`)
       .then(async res => {
-        const data = await res.json() as any;
         if (res.ok) {
+          const data = await res.json() as any;
           if (data.models) setAvailableModels(data.models);
           if (data.imageModels) setAvailableImageModels(data.imageModels);
-        } else if (res.status === 500) {
-          setState(prev => ({ 
-            ...prev, 
-            error: 'Backend API error. Please check your Cloudflare environment variables (OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY).' 
-          }));
+        } else {
+          const text = await res.text();
+          console.error('Failed to fetch models:', res.status, text);
+          if (res.status === 500) {
+            setState(prev => ({ 
+              ...prev, 
+              error: 'Backend API error. Please check your Cloudflare environment variables (OPENAI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY).' 
+            }));
+          }
         }
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error('Fetch models error:', err);
+      });
   }, []);
 
   const addDebugLog = (log: Omit<DebugLog, 'id' | 'timestamp'>, existingId?: string) => {
@@ -425,7 +431,7 @@ export const useChat = () => {
     });
 
     try {
-      const data: any = await fetchJsonWithTimeout('/api/generate-response', {
+      const data: any = await fetchJsonWithTimeout(`${import.meta.env.BASE_URL}api/generate-response`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -470,7 +476,7 @@ export const useChat = () => {
 
           const rephrasePrompt = settings.bannedSpeechPrompt.replace(/\{\{response\}\}/g, cleanedData.publicComment);
           
-          const rephraseData: any = await fetchJsonWithTimeout('/api/generate-response', {
+          const rephraseData: any = await fetchJsonWithTimeout(`${import.meta.env.BASE_URL}api/generate-response`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -761,7 +767,7 @@ export const useChat = () => {
         model: state.settings.model 
       });
       
-      const quickRes = await fetch('/api/generate-panelists', {
+      const quickRes = await fetch(`${import.meta.env.BASE_URL}api/generate-panelists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quickPayload),
@@ -890,7 +896,7 @@ export const useChat = () => {
           });
 
           // 2. Generate Personality
-          const detailsData: any = await fetchJsonWithTimeout('/api/generate-panelist-details', {
+          const detailsData: any = await fetchJsonWithTimeout(`${import.meta.env.BASE_URL}api/generate-panelist-details`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -951,7 +957,7 @@ export const useChat = () => {
 
           let finalAvatarUrl: string | undefined = undefined;
           try {
-            const imgData: any = await fetchJsonWithTimeout('/api/generate-image', {
+            const imgData: any = await fetchJsonWithTimeout(`${import.meta.env.BASE_URL}api/generate-image`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ prompt: imagePrompt, model: state.settings.imageModel }),
@@ -1173,7 +1179,7 @@ export const useChat = () => {
           });
 
           try {
-            const res = await fetch('/api/generate-response', {
+            const res = await fetch(`${import.meta.env.BASE_URL}api/generate-response`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1517,7 +1523,7 @@ export const useChat = () => {
       });
 
       try {
-        const res = await fetch('/api/moderator-response', {
+        const res = await fetch(`${import.meta.env.BASE_URL}api/moderator-response`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1650,6 +1656,52 @@ export const useChat = () => {
     setState(prev => ({ ...prev, error: null }));
   }, []);
 
+  const saveSettingsToCloud = useCallback(async (settingsToSave: Settings) => {
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsToSave)
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Failed to save settings: ${res.status} ${text}`);
+      }
+      return true;
+    } catch (err: any) {
+      console.error('Error saving settings:', err);
+      setState(prev => ({ ...prev, error: `Cloudflare Save Error: ${err.message}` }));
+      return false;
+    }
+  }, []);
+
+  const fetchSettingsFromCloud = useCallback(async () => {
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/settings`);
+      if (res.ok) {
+        const cloudSettings = await res.json();
+        if (cloudSettings && typeof cloudSettings === 'object' && Object.keys(cloudSettings).length > 0) {
+          setState(prev => ({
+            ...prev,
+            settings: { ...prev.settings, ...cloudSettings }
+          }));
+          return cloudSettings;
+        }
+      } else {
+        const text = await res.text();
+        console.warn('Cloudflare fetch settings non-ok:', res.status, text);
+      }
+    } catch (err) {
+      console.error('Error fetching settings from Cloudflare:', err);
+    }
+    return null;
+  }, []);
+
+  // Fetch settings from Cloudflare on mount
+  useEffect(() => {
+    fetchSettingsFromCloud();
+  }, [fetchSettingsFromCloud]);
+
   return {
     state,
     availableModels,
@@ -1661,5 +1713,7 @@ export const useChat = () => {
     updateSettings,
     clearAutoResponse,
     clearError,
+    saveSettingsToCloud,
+    fetchSettingsFromCloud
   };
 };
